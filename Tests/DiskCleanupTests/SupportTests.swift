@@ -121,6 +121,12 @@ struct SupportTests {
         #expect(MacOSNames.version(ofInstaller: "Install macOS Big Sur") == "11")
         #expect(MacOSNames.version(ofInstaller: "Install macOS Sonoma") == "14")
         #expect(MacOSNames.version(ofInstaller: "Install macOS Something New") == nil)
+        let update = try! PropertyListSerialization.data(
+            fromPropertyList: ["Assets": [["OSVersion": "27.0", "Build": "26A428"]]], format: .xml, options: 0)
+        #expect(MacOSInstallerData.version(softwareUpdate: update) == "27.0")
+        #expect(MacOSInstallerData.version(softwareUpdate: Data("not a plist".utf8)) == nil)
+        #expect(MacOSInstallerData.cleaned(" 26.1 ") == "26.1")
+        #expect(MacOSInstallerData.cleaned("Tahoe") == nil)
     }
 
     @Test func packageInfoIsRead() {

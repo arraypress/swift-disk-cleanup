@@ -55,7 +55,7 @@ public enum InstallerReader {
             let name = PathText.lastComponent(path)
             let info = InstallerInfo(path: path, kind: .macOSInstaller, bundleID: AppIndex.read(appAt: path)?.bundleID,
                                      name: String(name.dropLast(4)),
-                                     version: MacOSNames.version(ofInstaller: String(name.dropLast(4))),
+                                     version: macOSInstallerVersion(path),
                                      verdict: .unknown, reason: "")
             return InstallerJudge.judgeMacOS(info, osVersion: context.osVersion)
         }
@@ -85,37 +85,24 @@ public enum InstallerReader {
             info.reason = "has a licence agreement: attaching it would ask for consent"
             return info
         }
-        let mountRoot = FileManager.default.temporaryDirectory.appendingPathComponent("diskmaid-mount-\(UUID().uuidString)")
-        guard (try? FileManager.default.createDirectory(at: mountRoot, withIntermediateDirectories: true)) != nil else {
-            info.reason = "no private mount point"
-            return info
-        }
-        defer { try? FileManager.default.removeItem(at: mountRoot) }
-        let attach = CommandRunner.run("/usr/bin/hdiutil", [
-            "attach", "-readonly", "-nobrowse", "-noautoopen", "-noverify", "-noautofsck",
-            "-mountrandom", mountRoot.path, "-plist", path,
-        ], timeout: 90)
-        let mounts = attach.map { HdiutilOutput.mountPoints($0.stdout) } ?? []
-        defer {
-            for mount in mounts { detach(mount) }
-            // A timed-out attach may still have mounted something under the root.
-            for name in PathProbe.list(mountRoot.path).names { detach(mountRoot.path + "/" + name) }
-        }
-        guard let attach, attach.succeeded, !mounts.isEmpty else {
-            info.reason = "it would not attach: \(attach?.errorText.suffix(200) ?? "hdiutil did not start")"
-            return info
-        }
-        var bundles: [BundleInfo] = []
-        var packages: [String] = []
-        for mount in mounts {
-            for name in PathProbe.list(mount).names where !name.hasPrefix(".") {
-                let item = mount + "/" + name
-                if name.hasSuffix(".app"), let app = AppIndex.read(appAt: item) {
-                    bundles.append(BundleInfo(bundleID: app.bundleID, version: app.version, build: app.build, name: app.name))
-                } else if name.hasSuffix(".pkg") || name.hasSuffix(".mpkg") {
-                    packages.append(item)
+        let attached = withAttachedImage(path) { mounts -> ([BundleInfo], [String]) in
+            var bundles: [BundleInfo] = []
+            var packages: [String] = []
+            for mount in mounts {
+                for name in PathProbe.list(mount).names where !name.hasPrefix(".") {
+                    let item = mount + "/" + name
+                    if name.hasSuffix(".app"), let app = AppIndex.read(appAt: item) {
+                        bundles.append(BundleInfo(bundleID: app.bundleID, version: app.version, build: app.build, name: app.name))
+                    } else if name.hasSuffix(".pkg") || name.hasSuffix(".mpkg") {
+                        packages.append(item)
+                    }
                 }
             }
+            return (bundles, packages)
+        }
+        guard case .success(let (bundles, packages)) = attached else {
+            if case .failure(let reason) = attached { info.reason = reason }
+            return info
         }
         if bundles.isEmpty, let package = packages.first {
             // An image that only carries a package: judge the package.
@@ -130,6 +117,63 @@ public enum InstallerReader {
             return info
         }
         return judge(info, bundles: bundles, context: context, index: index)
+    }
+
+    /// Attaches an image read-only, hidden, never auto-opened, at a private
+    /// mount point; runs `body` on its mount points; always detaches.
+    static func withAttachedImage<T>(_ path: String, _ body: ([String]) -> T) -> AttachResult<T> {
+        let mountRoot = FileManager.default.temporaryDirectory.appendingPathComponent("diskmaid-mount-\(UUID().uuidString)")
+        guard (try? FileManager.default.createDirectory(at: mountRoot, withIntermediateDirectories: true)) != nil else {
+            return .failure("no private mount point")
+        }
+        defer { try? FileManager.default.removeItem(at: mountRoot) }
+        let attach = CommandRunner.run("/usr/bin/hdiutil", [
+            "attach", "-readonly", "-nobrowse", "-noautoopen", "-noverify", "-noautofsck",
+            "-mountrandom", mountRoot.path, "-plist", path,
+        ], timeout: 90)
+        let mounts = attach.map { HdiutilOutput.mountPoints($0.stdout) } ?? []
+        defer {
+            for mount in mounts { detach(mount) }
+            // A timed-out attach may still have mounted something under the root.
+            for name in PathProbe.list(mountRoot.path).names { detach(mountRoot.path + "/" + name) }
+        }
+        guard let attach, attach.succeeded, !mounts.isEmpty else {
+            return .failure("it would not attach: \(attach?.errorText.suffix(200) ?? "hdiutil did not start")")
+        }
+        return .success(body(mounts))
+    }
+
+    /// What ``withAttachedImage(_:_:)`` gives back: the body's answer, or why
+    /// the image would not attach.
+    enum AttachResult<T> {
+        case success(T)
+        case failure(String)
+    }
+
+    // MARK: Install macOS
+
+    /// The macOS version an `Install macOS ….app` installs, read from the
+    /// installer's own data so a release this table has never heard of still
+    /// reads: `SharedSupport/InstallInfo.plist` (Catalina and earlier), else the
+    /// software-update XML inside `SharedSupport/SharedSupport.dmg` (Big Sur
+    /// on), else the release name.
+    static func macOSInstallerVersion(_ path: String) -> String? {
+        let support = path + "/Contents/SharedSupport"
+        if let data = PathProbe.read(support + "/InstallInfo.plist"),
+           let version = MacOSInstallerData.version(installInfo: data) {
+            return version
+        }
+        let image = support + "/SharedSupport.dmg"
+        if PathProbe.isFile(image),
+           case .success(let version?) = withAttachedImage(image, { mounts in
+               mounts.lazy.compactMap { mount in
+                   PathProbe.read(mount + "/" + MacOSInstallerData.softwareUpdateXML)
+                       .flatMap(MacOSInstallerData.version(softwareUpdate:))
+               }.first
+           }) {
+            return version
+        }
+        return MacOSNames.version(ofInstaller: String(PathText.lastComponent(path).dropLast(4)))
     }
 
     static func detach(_ mount: String) {

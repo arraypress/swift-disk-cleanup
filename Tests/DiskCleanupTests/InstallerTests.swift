@@ -49,4 +49,50 @@ struct InstallerTests {
         #expect(cleanable == ["dead.dmg", "packaged.pkg", "zipped.zip"])
         #expect(report.items.count == 6)
     }
+
+    /// An `Install macOS ….app` says which macOS it installs through the data
+    /// it carries, so a release whose name no table knows still reads.
+    @Test func macOSInstallersReadTheirOwnVersion() throws {
+        let root = URL(fileURLWithPath: "/private/tmp/diskmaid-macos-\(UUID().uuidString.prefix(8))")
+        defer { try? FileManager.default.removeItem(at: root) }
+        func installer(_ name: String, softwareUpdate version: String) throws -> String {
+            let app = root.appendingPathComponent("Install macOS \(name).app")
+            let support = app.appendingPathComponent("Contents/SharedSupport")
+            let source = root.appendingPathComponent(".staging-\(name)/com_apple_MobileAsset_MacSoftwareUpdate")
+            try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+            let xml: [String: Any] = ["Assets": [["OSVersion": version, "Build": "99A1"]]]
+            try PropertyListSerialization.data(fromPropertyList: xml, format: .xml, options: 0)
+                .write(to: source.appendingPathComponent("com_apple_MobileAsset_MacSoftwareUpdate.xml"))
+            let made = CommandRunner.run("/usr/bin/hdiutil", [
+                "create", "-quiet", "-srcfolder", source.deletingLastPathComponent().path, "-volname", "Shared Support",
+                "-format", "UDZO", support.appendingPathComponent("SharedSupport.dmg").path,
+            ], timeout: 120)
+            #expect(made?.succeeded == true)
+            return app.path
+        }
+        let future = try installer("Faraway", softwareUpdate: "99.1")
+        let past = try installer("Yesteryear", softwareUpdate: "11.7")
+        let classic = root.appendingPathComponent("Install macOS Elsewhere.app")
+        try FileManager.default.createDirectory(at: classic.appendingPathComponent("Contents/SharedSupport"),
+                                                withIntermediateDirectories: true)
+        try PropertyListSerialization.data(fromPropertyList: ["System Image Info": ["version": "10.15.7"]],
+                                           format: .xml, options: 0)
+            .write(to: classic.appendingPathComponent("Contents/SharedSupport/InstallInfo.plist"))
+
+        #expect(InstallerReader.macOSInstallerVersion(future) == "99.1")
+        #expect(InstallerReader.macOSInstallerVersion(past) == "11.7")
+        #expect(InstallerReader.macOSInstallerVersion(classic.path) == "10.15.7")
+        // With no data inside, the name still answers for a known release.
+        let named = root.appendingPathComponent("Install macOS Sonoma.app")
+        try FileManager.default.createDirectory(at: named, withIntermediateDirectories: true)
+        #expect(InstallerReader.macOSInstallerVersion(named.path) == "14")
+
+        let context = CleanupContext.live(home: root)
+        let index = AppIndex.build(folders: [])
+        #expect(InstallerReader.inspect(future, context: context, index: index)?.verdict == .pendingUpdate)
+        #expect(InstallerReader.inspect(past, context: context, index: index)?.verdict == .dead)
+        let mounts = CommandRunner.run("/usr/bin/hdiutil", ["info"], timeout: 30)?.text ?? ""
+        #expect(!mounts.contains("diskmaid-mount"))
+    }
 }
