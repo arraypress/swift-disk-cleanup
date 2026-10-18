@@ -71,10 +71,13 @@ public enum BigFiles {
     /// Packages macOS may not have registered: a file inside one is a part,
     /// and taking it breaks the whole (a model, a disk image, a project).
     static let packages: Set<String> = ["aimodel", "mlmodelc", "mlpackage", "xcarchive", "sparsebundle", "sparseimage",
-                                        "photoslibrary", "logicx", "band", "fcpbundle", "rtfd", "playground", "xcodeproj"]
+                                        "photoslibrary", "musiclibrary", "tvlibrary", "logicx", "band", "fcpbundle", "rtfd",
+                                        "playground", "xcodeproj"]
 
-    /// Whether a folder above `path` is a package or bundle.
-    static func insidePackage(_ path: String) -> Bool {
+    /// Whether a folder above `path` is a package or bundle — an app, a
+    /// Photos or Music library, a model, a disk image — so taking the file
+    /// alone would break the whole. Public for `diskmaid dupes`.
+    public static func insidePackage(_ path: String) -> Bool {
         var folder = PathText.parent(path)
         while folder != "/" {
             let name = PathText.lastComponent(folder)

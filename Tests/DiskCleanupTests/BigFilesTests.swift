@@ -107,6 +107,21 @@ struct BigFilesTests {
         #expect(fixture.exists("Downloads/never.iso"))
     }
 
+    @Test func packagesAndTheLastDoorAreAskable() throws {
+        #expect(BigFiles.insidePackage("/Users/x/Music/Music/Music Library.musiclibrary/Library.musicdb"))
+        #expect(BigFiles.insidePackage("/Users/x/Movies/TV/TV Library.tvlibrary/db"))
+        #expect(BigFiles.insidePackage("/Users/x/Pictures/Photos Library.photoslibrary/originals/A/1.heic"))
+        #expect(!BigFiles.insidePackage("/Users/x/Music/song.mp3"))
+        let fixture = try Fixture.make()
+        defer { fixture.remove() }
+        let catalogue = try Catalogue.builtIn()
+        let song = fixture.path("Music/song.mp3")
+        #expect(Remover.refusal(for: song, catalogue: catalogue, context: fixture.context())?.contains("protected") == true)
+        #expect(Remover.refusal(for: song, catalogue: catalogue, context: fixture.context(), allowing: ["~/Music"]) == nil)
+        #expect(Remover.refusal(for: fixture.path("Music"), catalogue: catalogue, context: fixture.context(), allowing: ["~/Music"]) != nil)
+        #expect(Remover.refusal(for: fixture.path("Downloads/a.bin"), catalogue: catalogue, context: fixture.context()) == nil)
+    }
+
     @Test func mdlsOutputIsReadInSortedOrderAndMisalignmentRefused() {
         let output = Data("2025-01-01 10:00:00 +0000\u{0}42\u{0}(null)\u{0}2026-01-01 10:00:00 +0000\u{0}7\u{0}2026-02-01 10:00:00 +0000\u{0}".utf8)
         let files = SpotlightText.files(output, paths: ["/a", "/b"])

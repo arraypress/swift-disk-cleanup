@@ -36,6 +36,12 @@ public enum Remover {
         return outcomes
     }
 
+    /// Why `path` would be refused at the last door, or `nil` when it may go —
+    /// the same check `remove` makes just before it acts, for a plan to show.
+    public static func refusal(for path: String, catalogue: Catalogue, context: CleanupContext, allowing: [String] = []) -> String? {
+        PathSafety.reason(for: path, catalogue: catalogue, home: context.home.path, allowing: allowing)
+    }
+
     /// A batch id that sorts by time: `20261015-142233-1a2b`.
     public static func newBatchID(now: Date = Date()) -> String {
         let formatter = DateFormatter()
