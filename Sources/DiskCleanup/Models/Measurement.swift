@@ -10,8 +10,9 @@ import Foundation
 /// What a walk of one path found.
 public struct Measurement: Codable, Equatable, Sendable {
     /// Allocated bytes — blocks on disk, not logical length — with each hard
-    /// link counted once. APFS clones still count in full, so freeing it
-    /// gives back "up to" this.
+    /// link counted once and blocks APFS clones share counted once. Clones
+    /// outside the walk keep their shared blocks, so freeing it gives back
+    /// "up to" this.
     public var bytes: Int64
     /// Files, links and other leaves counted.
     public var files: Int

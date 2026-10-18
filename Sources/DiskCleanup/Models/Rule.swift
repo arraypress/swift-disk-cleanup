@@ -38,13 +38,16 @@ public struct Rule: Equatable, Sendable {
     public let protect: [String]
     /// For device support: how many of the newest per platform to keep.
     public let keepNewest: Int?
+    /// For app libraries: the bundle ids of the apps the data serves. It is
+    /// found only when none of them is installed.
+    public let apps: [String]
     /// One line for a person: what it is and what losing it costs.
     public let note: String?
 
     public init(id: String, category: CleanupCategory, paths: [String] = [], globs: [String] = [],
                 marker: [String] = [], detector: Detector = .paths, owner: String? = nil,
                 regenerable: Bool, tier: Tier, removal: Removal, minAgeDays: Int? = nil,
-                protect: [String] = [], keepNewest: Int? = nil, note: String? = nil) {
+                protect: [String] = [], keepNewest: Int? = nil, apps: [String] = [], note: String? = nil) {
         self.id = id
         self.category = category
         self.paths = paths
@@ -58,6 +61,7 @@ public struct Rule: Equatable, Sendable {
         self.minAgeDays = minAgeDays
         self.protect = protect
         self.keepNewest = keepNewest
+        self.apps = apps
         self.note = note
     }
 }

@@ -10,7 +10,8 @@
 //     even though the scan already did — this is the last door);
 //  2. it is still the same thing — device, inode, modification time and
 //     allocated size all as measured — or it is skipped as "changed";
-//  3. then trash (journalled for undo), delete, or the owning tool's command.
+//  3. then trash (journalled for undo), delete, or the owning tool's command
+//     — or, for a root-owned item, nothing but the sudo command to run.
 //
 
 import Foundation
@@ -106,6 +107,10 @@ public enum Remover {
             } catch {
                 return fail(error.localizedDescription)
             }
+
+        case .sudo:
+            return RemovalOutcome(id: item.id, path: item.path, result: .skipped, to: item.removal.byHand(item.path),
+                                  reason: "owned by root: diskmaid does not ask for admin rights, so run the command yourself")
 
         case .delete:
             guard isFile else { return fail("not a file") }

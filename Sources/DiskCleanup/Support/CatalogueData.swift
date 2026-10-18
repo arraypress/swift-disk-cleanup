@@ -75,7 +75,7 @@ enum CatalogueData {
       "tier": "safe",
       "removal": "delete",
       "keepNewest": 1,
-      "note": "Debug symbols copied off a device. The newest version per platform is kept; Xcode copies the rest again when that device is next plugged in."
+      "note": "Debug symbols copied off a device. The newest build per device model is kept; Xcode copies the rest again when that device is next plugged in."
     },
     {
       "id": "xcode-archives",
@@ -764,6 +764,35 @@ enum CatalogueData {
       "note": "muse's optional classifiers; installed by hand, so keep them."
     },
     {
+      "id": "logic-sound-library",
+      "category": "leftovers",
+      "detector": "app-libraries",
+      "paths": [
+        "/Library/Application Support/Logic",
+        "/Library/Application Support/GarageBand",
+        "/Library/Audio/Apple Loops",
+        "/Library/Audio/Impulse Responses"
+      ],
+      "apps": ["com.apple.logic10", "com.apple.garageband10", "com.apple.mainstage3"],
+      "owner": "Logic Pro, GarageBand, MainStage",
+      "regenerable": false,
+      "tier": "review",
+      "removal": "sudo",
+      "note": "Sound library left by Logic Pro, GarageBand or MainStage, none of which is installed; reinstalling one downloads it again. Owned by root: diskmaid prints the sudo command instead of running it."
+    },
+    {
+      "id": "reason-sound-library",
+      "category": "leftovers",
+      "detector": "app-libraries",
+      "paths": ["/Library/Application Support/Propellerhead Software"],
+      "apps": ["se.propellerheads.reason", "com.reasonstudios.reason"],
+      "owner": "Reason",
+      "regenerable": false,
+      "tier": "review",
+      "removal": "sudo",
+      "note": "Reason's sound banks, left with no Reason installed (any Propellerhead or Reason Studios app keeps them). Owned by root: diskmaid prints the sudo command instead of running it."
+    },
+    {
       "id": "leftover-caches",
       "category": "leftovers",
       "detector": "leftovers",
@@ -938,6 +967,7 @@ enum CatalogueData {
     {
       "id": "chat-stores",
       "category": "report-only",
+      "detector": "chat-stores",
       "globs": [
         "~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared",
         "~/Library/Group Containers/*.net.whatsapp.WhatsApp.shared",
@@ -951,6 +981,26 @@ enum CatalogueData {
       "tier": "report",
       "removal": "trash",
       "note": "Each chat app manages its own storage; clear it from inside the app."
+    },
+    {
+      "id": "claude-vm-bundles",
+      "category": "report-only",
+      "paths": ["~/Library/Application Support/Claude/vm_bundles"],
+      "owner": "Claude",
+      "regenerable": true,
+      "tier": "report",
+      "removal": "delete",
+      "note": "The Claude desktop app's virtual machine; it downloads again when next needed. Remove it with Claude quit."
+    },
+    {
+      "id": "claude-code-sessions",
+      "category": "report-only",
+      "paths": ["~/.claude/projects"],
+      "owner": "Claude Code",
+      "regenerable": false,
+      "tier": "report",
+      "removal": "trash",
+      "note": "Claude Code's session history and memory, per project folder: what --resume reads. Not a cache."
     }
   ]
 }

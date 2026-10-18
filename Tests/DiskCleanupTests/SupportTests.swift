@@ -53,6 +53,14 @@ struct SupportTests {
         #expect(kept == ["iPhone17,1 18.1 (22B83)", "iPhone16,2 18.1 (22B83)", "Unknown"])
         #expect(DeviceSupportNames.version("iPhone17,1 18.1 (22B83)")?.version == "18.1")
         #expect(DeviceSupportNames.version("18.1 (22B83)")?.build == "22B83")
+        // One model, one version, three builds — a beta among them: only the newest release stays.
+        let builds = ["iPhone16,2 27.0 (24A435)", "iPhone16,2 27.0 (24A437)", "iPhone16,2 27.0 (24A5430a)", "iPhone17,1 26.4 (23E200)"]
+        #expect(DeviceSupportNames.kept(builds, keep: 1) == ["iPhone16,2 27.0 (24A437)", "iPhone17,1 26.4 (23E200)"])
+        #expect(DeviceSupportNames.compareBuilds("24A5430a", "24A435") == .orderedAscending)
+        #expect(DeviceSupportNames.compareBuilds("24B5012a", "24A437") == .orderedDescending)
+        #expect(DeviceSupportNames.compareBuilds("24A437", nil) == nil)
+        // Builds that cannot be read leave equal versions equal: both stay.
+        #expect(DeviceSupportNames.kept(["iPhone16,2 27.0 (x)", "iPhone16,2 27.0"], keep: 1).count == 2)
     }
 
     @Test func osBuildsAreRecognised() {
@@ -248,6 +256,27 @@ struct SupportTests {
         #expect(measured.bytes >= 100_000 && measured.bytes < 140_000, "\(measured.bytes)")
         #expect(measured.visibility == .visible)
         #expect(Sizer.measure(root.path + "/nothing").visibility == .absent)
+    }
+
+    @Test func clonesCountTheirSharedBlocksOnce() throws {
+        let root = URL(fileURLWithPath: "/private/tmp/diskmaid-clone-\(UUID().uuidString.prefix(8))")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("copies"), withIntermediateDirectories: true)
+        let original = root.appendingPathComponent("original")
+        try Data((0..<1_000_000).map { UInt8(truncatingIfNeeded: $0 &* 31) }).write(to: original)
+        for index in 0..<20 {
+            #expect(clonefile(original.path, root.appendingPathComponent("copies/\(index)").path, 0) == 0)
+        }
+        let whole = Sizer.measure(root.path)
+        #expect(whole.files == 21)
+        // Twenty-one names, one megabyte of blocks.
+        #expect(whole.bytes >= 1_000_000 && whole.bytes < 1_100_000, "\(whole.bytes)")
+        // Only clones of something outside the walk: still one copy's worth, never zero.
+        let copies = Sizer.measure(root.appendingPathComponent("copies").path).bytes
+        #expect(copies >= 1_000_000 && copies < 1_100_000, "\(copies)")
+        // A file with no clones counts in full.
+        try Data(repeating: 7, count: 500_000).write(to: root.appendingPathComponent("plain"))
+        #expect(Sizer.measure(root.path).bytes >= 1_500_000)
     }
 
     @Test func refusedFoldersAreNotVisibleNotEmpty() throws {

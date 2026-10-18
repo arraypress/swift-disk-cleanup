@@ -9,7 +9,7 @@ import Foundation
 
 /// How an item leaves the disk.
 ///
-/// In the catalogue JSON this is `"trash"`, `"delete"`, or the owning tool's
+/// In the catalogue JSON this is `"trash"`, `"delete"`, `"sudo"`, or the owning tool's
 /// own command as an array — `["uv", "cache", "prune"]`. A command argument
 /// may name a placeholder (`{udid}`, `{identifier}`) the detector fills from
 /// the item's evidence.
@@ -20,4 +20,7 @@ public enum Removal: Equatable, Hashable, Sendable {
     case delete
     /// The owning tool's command, run with no shell.
     case command([String])
+    /// Owned by root. diskmaid never asks for admin rights: it prints
+    /// `sudo rm -rf <path>` for a person to run, and leaves it.
+    case sudo
 }

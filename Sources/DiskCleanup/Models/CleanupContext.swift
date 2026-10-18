@@ -30,6 +30,9 @@ public struct CleanupContext: Sendable {
     public var commandFolders: [URL]
     /// Launch agent and daemon folders, read for leftover checks.
     public var launchFolders: [URL]
+    /// Where the catalogue's absolute paths (`/Library/…`) are read: `/`, or
+    /// `<home>/root` for a fixture, so a test never reads this Mac's own.
+    public var root: URL
     /// The running OS's build (`26A428`), for Core AI's cache.
     public var osBuild: String?
     /// The running OS's version (`27.0`), for macOS installers.
@@ -46,7 +49,7 @@ public struct CleanupContext: Sendable {
     public init(home: URL, isFixture: Bool, applicationFolders: [URL], installerFolders: [URL],
                 projectRoots: [URL], commandFolders: [URL], launchFolders: [URL], osBuild: String?,
                 osVersion: String?, journal: URL, trashFolder: URL?, environment: [String: String],
-                lookup: any ApplicationLookup, now: Date = Date()) {
+                lookup: any ApplicationLookup, root: URL = URL(fileURLWithPath: "/"), now: Date = Date()) {
         self.home = home
         self.isFixture = isFixture
         self.applicationFolders = applicationFolders
@@ -54,6 +57,7 @@ public struct CleanupContext: Sendable {
         self.projectRoots = projectRoots
         self.commandFolders = commandFolders
         self.launchFolders = launchFolders
+        self.root = root
         self.osBuild = osBuild
         self.osVersion = osVersion
         self.journal = journal

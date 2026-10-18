@@ -11,7 +11,7 @@ extension Rule: Codable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case id, category, paths, globs, marker, detector, owner, regenerable, tier, removal
-        case minAgeDays, protect, keepNewest, note
+        case minAgeDays, protect, keepNewest, apps, note
     }
 
     public init(from decoder: any Decoder) throws {
@@ -31,6 +31,7 @@ extension Rule: Codable {
             minAgeDays: try c.decodeIfPresent(Int.self, forKey: .minAgeDays),
             protect: try c.decodeIfPresent([String].self, forKey: .protect) ?? [],
             keepNewest: try c.decodeIfPresent(Int.self, forKey: .keepNewest),
+            apps: try c.decodeIfPresent([String].self, forKey: .apps) ?? [],
             note: try c.decodeIfPresent(String.self, forKey: .note)
         )
     }
@@ -50,6 +51,7 @@ extension Rule: Codable {
         try c.encodeIfPresent(minAgeDays, forKey: .minAgeDays)
         if !protect.isEmpty { try c.encode(protect, forKey: .protect) }
         try c.encodeIfPresent(keepNewest, forKey: .keepNewest)
+        if !apps.isEmpty { try c.encode(apps, forKey: .apps) }
         try c.encodeIfPresent(note, forKey: .note)
     }
 }

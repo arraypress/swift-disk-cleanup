@@ -37,6 +37,7 @@ enum CatalogueCheck {
                 }
             }
             if rule.keepNewest != nil && rule.detector != .deviceSupport { problems.append("\(label): keepNewest is for device support") }
+            if (rule.detector == .appLibraries) == rule.apps.isEmpty { problems.append("\(label): apps go with, and only with, the app-libraries detector") }
             if case .command(let arguments) = rule.removal {
                 if arguments.isEmpty { problems.append("\(label): empty command") }
                 if let first = arguments.first, first.contains("/") { problems.append("\(label): command names a path, not a tool") }

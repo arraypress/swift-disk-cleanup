@@ -15,7 +15,7 @@ public extension CleanupContext {
     /// - Parameter home: A stand-in home folder. Everything is then read from
     ///   inside it, the Trash is `<home>/.Trash`, and commands are looked for
     ///   only in `<home>/bin` — the real `brew`, `xcrun` and `tmutil` are out
-    ///   of reach.
+    ///   of reach, and `/Library/…` rules read `<home>/root/Library/…`.
     static func live(home: URL? = nil, environment: [String: String] = ProcessInfo.processInfo.environment) -> CleanupContext {
         let realHome = FileManager.default.homeDirectoryForCurrentUser
         let isFixture = home != nil
@@ -43,7 +43,8 @@ public extension CleanupContext {
             journal: home.appendingPathComponent("Library/Application Support/diskmaid/journal.json"),
             trashFolder: isFixture ? at(".Trash") : nil,
             environment: environment,
-            lookup: SystemApplicationLookup(home: home)
+            lookup: SystemApplicationLookup(home: home),
+            root: isFixture ? at("root") : URL(fileURLWithPath: "/")
         )
     }
 }

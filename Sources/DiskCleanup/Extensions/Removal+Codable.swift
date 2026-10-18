@@ -15,8 +15,9 @@ extension Removal: Codable {
             switch word {
             case "trash": self = .trash
             case "delete": self = .delete
+            case "sudo": self = .sudo
             default:
-                throw DecodingError.dataCorruptedError(in: container, debugDescription: "removal must be trash, delete or a command array, not \(word)")
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "removal must be trash, delete, sudo or a command array, not \(word)")
             }
         } else {
             let arguments = try container.decode([String].self)
@@ -33,17 +34,26 @@ extension Removal: Codable {
         case .trash: try container.encode("trash")
         case .delete: try container.encode("delete")
         case .command(let arguments): try container.encode(arguments)
+        case .sudo: try container.encode("sudo")
         }
     }
 }
 
 public extension Removal {
-    /// `trash`, `delete`, or the command as typed.
+    /// `trash`, `delete`, `sudo rm -rf`, or the command as typed.
     var display: String {
         switch self {
         case .trash: "trash"
         case .delete: "delete"
         case .command(let arguments): CommandTemplate.display(arguments)
+        case .sudo: "sudo rm -rf"
         }
+    }
+
+    /// What a person runs to remove `path` themselves, for `.sudo`; `nil`
+    /// for everything diskmaid removes on its own.
+    func byHand(_ path: String) -> String? {
+        guard self == .sudo else { return nil }
+        return "sudo rm -rf '" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }

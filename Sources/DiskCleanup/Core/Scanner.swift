@@ -22,7 +22,7 @@ public enum Scanner {
         let selected = catalogue.rules.filter { options.categories.isEmpty || options.categories.contains($0.category) }
         let scanned = CleanupCategory.allCases.filter { options.categories.isEmpty || options.categories.contains($0) }
 
-        let needsApps = selected.contains { [.installers, .leftovers, .groupContainers].contains($0.detector) }
+        let needsApps = selected.contains { [.installers, .leftovers, .groupContainers, .appLibraries].contains($0.detector) }
         let shared = Detectors.Shared(
             index: needsApps ? AppIndex.build(folders: context.applicationFolders) : AppIndex(apps: [:], unreadable: []),
             running: needsApps ? context.lookup.runningBundleIDs() : [],
@@ -62,7 +62,9 @@ public enum Scanner {
             case .lmStudioModels: result = Detectors.lmStudioModels(rule, context: context)
             case .homebrew: result = Detectors.homebrew(rule, context: context)
             case .leftovers: result = Detectors.leftovers(rule, context: context, catalogue: catalogue, shared: shared)
+            case .appLibraries: result = Detectors.appLibraries(rule, context: context, shared: shared)
             case .groupContainers: result = Detectors.groupContainers(rule, context: context, shared: shared)
+            case .chatStores: result = Detectors.chatStores(rule, context: context)
             case .launchAgents: result = Detectors.launchAgents(rule, context: context)
             case .snapshots: result = Detectors.snapshots(rule, context: context)
             }

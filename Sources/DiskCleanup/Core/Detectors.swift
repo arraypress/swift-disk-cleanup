@@ -44,7 +44,8 @@ enum Detectors {
     /// A rule's paths and globs with the home filled in, and the environment's
     /// overrides for caches that can move (real homes only).
     static func places(_ rule: Rule, context: CleanupContext) -> [String] {
-        var places = (rule.paths + rule.globs).map { PathText.expand($0, home: context.home.path) }
+        let root = context.root.path == "/" ? "" : context.root.path
+        var places = (rule.paths + rule.globs).map { $0.hasPrefix("/") ? root + $0 : PathText.expand($0, home: context.home.path) }
         if !context.isFixture {
             let overrides: [String: String] = ["uv-cache": "UV_CACHE_DIR", "hf-hub": "HF_HUB_CACHE"]
             if let key = overrides[rule.id], let value = context.environment[key], value.hasPrefix("/") {
@@ -72,8 +73,32 @@ enum Detectors {
                 }
                 result.candidates[index].evidence["platform"] = PathText.lastComponent(PathText.parent(result.candidates[index].path))
                 if kept.contains(name) {
-                    result.candidates[index].protected = "the newest for this platform, kept"
+                    result.candidates[index].protected = "the newest build for this device model, kept"
                 }
+            }
+        }
+        return result
+    }
+
+    // MARK: Chat stores
+
+    /// Chat stores as found, with WhatsApp's unlisted media as evidence and a
+    /// note. Report only: Group Containers are never removed from, so the
+    /// note says where it can be cleared.
+    static func chatStores(_ rule: Rule, context: CleanupContext) -> DetectorResult {
+        var result = paths(rule, context: context)
+        for index in result.candidates.indices where result.candidates[index].path.hasSuffix(".net.whatsapp.WhatsApp.shared") {
+            switch ChatMedia.whatsAppUnlisted(container: result.candidates[index].path) {
+            case .success(let unlisted):
+                result.candidates[index].evidence["listedMedia"] = String(unlisted.listed)
+                result.candidates[index].evidence["unlistedMediaFiles"] = String(unlisted.files)
+                result.candidates[index].evidence["unlistedMediaBytes"] = String(unlisted.bytes)
+                if unlisted.files > 0 {
+                    let size = ByteCountFormatter.string(fromByteCount: unlisted.bytes, countStyle: .file)
+                    result.notes.append("WhatsApp: \(unlisted.files) media file(s) (\(size) of their own) in Message/Media are not in its database — a deleted chat's media or a download that looped. Clear them in WhatsApp's storage settings, or quit WhatsApp and remove them by hand.")
+                }
+            case .failure(let reason):
+                result.candidates[index].evidence["unlistedMedia"] = "not checked: \(reason.text)"
             }
         }
         return result
@@ -400,6 +425,56 @@ enum Detectors {
         }
         if unanswered > 0 {
             result.notes.append("\(rule.id): \(unanswered) left alone because LaunchServices or Spotlight did not answer")
+        }
+        return result
+    }
+
+    /// An app's library outside the home folder, kept while any of `apps` is
+    /// installed. The same checks as a leftover — app folders, running apps,
+    /// LaunchServices, Spotlight — but an Apple id matches only exactly
+    /// (some Apple app is always installed), and a third party's matches its
+    /// whole vendor. No answer, or an unreadable app, keeps it.
+    static func appLibraries(_ rule: Rule, context: CleanupContext, shared: Shared) -> DetectorResult {
+        var result = paths(rule, context: context)
+        guard !result.candidates.isEmpty else { return result }
+        guard shared.index.unreadable.isEmpty else {
+            result.notes.append("\(rule.id): not judged — \(shared.index.unreadable.count) app(s) have an unreadable Info.plist")
+            result.candidates = []
+            return result
+        }
+        let known = shared.index.knownIDs
+        let running = Set(shared.running.map { $0.lowercased() })
+        func installed(_ id: String) -> Bool? {
+            let present = BundleIDs.isApple(id)
+                ? known.ids.contains(id.lowercased()) || running.contains(id.lowercased())
+                : BundleIDs.isRelated(id, to: known.ids, vendors: known.vendors)
+                    || BundleIDs.isRelated(id, to: running, vendors: Set(running.map(BundleIDs.vendor)))
+            if present { return true }
+            for answer in [context.lookup.launchServices(id), context.lookup.spotlight(id)] {
+                switch answer {
+                case .installed: return true
+                case .noAnswer: return nil
+                case .notInstalled: continue
+                }
+            }
+            return false
+        }
+        var answers: [Bool?] = []
+        for id in rule.apps {
+            let answer = installed(id)
+            answers.append(answer)
+            if answer != false { break }
+        }
+        guard answers.allSatisfy({ $0 == false }) else {
+            if answers.contains(where: { $0 == nil }) {
+                result.notes.append("\(rule.id): left alone because LaunchServices or Spotlight did not answer")
+            }
+            result.candidates = []
+            return result
+        }
+        for index in result.candidates.indices {
+            result.candidates[index].evidence["apps"] = rule.apps.joined(separator: ", ")
+            result.candidates[index].evidence["checked"] = "app folders, running apps, LaunchServices, Spotlight: none installed"
         }
         return result
     }

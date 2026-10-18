@@ -48,14 +48,16 @@ struct CatalogueTests {
     }
 
     @Test func userMadeThingsGoToTheTrash() throws {
+        // A root-owned library is never removed by diskmaid at all: it only prints the command.
         for rule in try Catalogue.builtIn().rules where !rule.regenerable && rule.tier != .report {
-            #expect(rule.removal == .trash, "\(rule.id)")
+            #expect([.trash, .sudo].contains(rule.removal), "\(rule.id)")
         }
         // Installers and leftovers are the two user-made categories.
         let catalogue = try Catalogue.builtIn()
         for rule in catalogue.rules where [.installers, .leftovers].contains(rule.category) {
-            #expect(rule.removal == .trash, "\(rule.id)")
+            #expect([.trash, .sudo].contains(rule.removal), "\(rule.id)")
         }
+        #expect(catalogue.rules.filter { $0.removal == .sudo }.allSatisfy { $0.tier == .review && $0.paths.allSatisfy { $0.hasPrefix("/Library/") } })
     }
 
     @Test func broadSweepsComeAfterEverySpecificRule() throws {

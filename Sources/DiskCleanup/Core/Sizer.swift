@@ -9,6 +9,12 @@
 //
 //  - the size is ALLOCATED blocks (st_blocks × 512), not logical length;
 //  - a file with several hard links counts once per walk;
+//  - APFS clones count their shared blocks once per walk: each file adds its
+//    private bytes, and the rest — what it shares — is added once per clone
+//    id. A clone that was partly rewritten gets a clone id of its own, so its
+//    shared blocks can still count twice: over, never under. Clones shared
+//    between two walks count in each, and files under 64 KB count in full
+//    (asking for every small file doubled a full scan);
 //  - an iCloud placeholder (SF_DATALESS) is counted as zero and, if it is a
 //    folder, never listed — listing a dataless folder downloads it;
 //  - a folder macOS refuses is counted as unreadable, which makes the result
@@ -29,6 +35,7 @@ public enum Sizer {
         }
         var result = Measurement(visibility: .visible)
         var linked = Set<UInt64>()
+        var clones = CloneTally()
         let pathCopy = strdup(path)
         defer { free(pathCopy) }
         var arguments: [UnsafeMutablePointer<CChar>?] = [pathCopy, nil]
@@ -68,10 +75,54 @@ public enum Sizer {
                 guard linked.insert(UInt64(stat.st_ino)).inserted else { continue }
             }
             result.files += 1
-            result.bytes += Int64(stat.st_blocks) * 512
+            let allocated = Int64(stat.st_blocks) * 512
+            result.bytes += kind == FTS_F ? clones.add(entry.pointee.fts_accpath, allocated: allocated) : allocated
         }
         if result.unreadable > 0 { result.visibility = .partial }
         return result
+    }
+
+    /// Adds up files with the blocks APFS clones share counted once: each file
+    /// adds its private bytes, and its shared bytes once per clone id.
+    struct CloneTally {
+        private var counted: [UInt64: Int64] = [:]
+
+        /// What a file adds that this tally has not counted already.
+        mutating func add(_ path: UnsafePointer<CChar>, allocated: Int64) -> Int64 {
+            guard allocated >= Sizer.cloneFloor, let clone = Sizer.cloneShare(path) else { return allocated }
+            let shared = max(0, allocated - clone.privateBytes)
+            let before = counted[clone.id] ?? 0
+            counted[clone.id] = max(before, shared)
+            return min(clone.privateBytes, allocated) + max(0, shared - before)
+        }
+    }
+
+    /// Files smaller than this count in full without asking: asking costs a
+    /// second lookup per file, build folders hold hundreds of thousands of
+    /// small ones, and the space clones hide is in the large ones.
+    static let cloneFloor: Int64 = 65_536
+
+    /// A file's clone id and the bytes it shares with no clone, or `nil` where
+    /// the volume does not say (anything but APFS), which counts it in full.
+    static func cloneShare(_ path: UnsafePointer<CChar>) -> (id: UInt64, privateBytes: Int64)? {
+        var request = attrlist()
+        request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
+        request.commonattr = attrgroup_t(ATTR_CMN_RETURNED_ATTRS)
+        request.forkattr = attrgroup_t(ATTR_CMNEXT_PRIVATESIZE | ATTR_CMNEXT_CLONEID)
+        // Laid out as: u_int32_t length, attribute_set_t returned, off_t private size, u_int64_t clone id.
+        var buffer = [UInt8](repeating: 0, count: 4 + MemoryLayout<attribute_set_t>.size + 16)
+        let status = buffer.withUnsafeMutableBytes {
+            getattrlist(path, &request, $0.baseAddress, $0.count, UInt32(FSOPT_ATTR_CMN_EXTENDED | FSOPT_NOFOLLOW))
+        }
+        guard status == 0 else { return nil }
+        return buffer.withUnsafeBytes { raw in
+            let returned = raw.loadUnaligned(fromByteOffset: 4, as: attribute_set_t.self)
+            let wanted = attrgroup_t(ATTR_CMNEXT_PRIVATESIZE | ATTR_CMNEXT_CLONEID)
+            guard returned.forkattr & wanted == wanted else { return nil }
+            let offset = 4 + MemoryLayout<attribute_set_t>.size
+            return (raw.loadUnaligned(fromByteOffset: offset + 8, as: UInt64.self),
+                    raw.loadUnaligned(fromByteOffset: offset, as: Int64.self))
+        }
     }
 
     /// Who `path` is right now, with `bytes` as measured. `nil` when it is gone.
