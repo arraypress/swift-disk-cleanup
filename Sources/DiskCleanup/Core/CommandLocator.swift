@@ -19,6 +19,13 @@ enum CommandLocator {
         return nil
     }
 
+    /// One of macOS's own tools at its fixed path — or, for a fixture home,
+    /// only a stand-in in `<home>/bin`, so a test never asks the real one.
+    static func system(_ name: String, at path: String, in context: CleanupContext) -> String? {
+        let found = context.isFixture ? context.home.path + "/bin/" + name : path
+        return FileManager.default.isExecutableFile(atPath: found) ? found : nil
+    }
+
     /// The command folders for a real home: PATH, then the usual installers' bins.
     static func standardFolders(home: URL, environment: [String: String]) -> [URL] {
         var seen = Set<String>()

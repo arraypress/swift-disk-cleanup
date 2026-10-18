@@ -33,7 +33,7 @@ public enum SystemReader {
             space.freeBytes = Int64(fs.f_bavail) * Int64(fs.f_bsize)
         }
 
-        let diskutil = tool("diskutil", system: "/usr/sbin/diskutil", context: context)
+        let diskutil = CommandLocator.system("diskutil", at: "/usr/sbin/diskutil", in: context)
         if let diskutil, let info = run(diskutil, ["info", "-plist", "/"]), let container = SystemText.container(fromInfo: info) {
             space.container = container
             if let list = run(diskutil, ["apfs", "list", "-plist"]) {
@@ -41,7 +41,7 @@ public enum SystemReader {
             }
         }
         var names: [String]?
-        if let tmutil = tool("tmutil", system: "/usr/bin/tmutil", context: context), let text = run(tmutil, ["listlocalsnapshots", "/"]) {
+        if let tmutil = CommandLocator.system("tmutil", at: "/usr/bin/tmutil", in: context), let text = run(tmutil, ["listlocalsnapshots", "/"]) {
             names = TmutilText.snapshots(String(decoding: text, as: UTF8.self))
         }
         if let diskutil, let list = run(diskutil, ["apfs", "listSnapshots", "-plist", "/System/Volumes/Data"]),
@@ -49,7 +49,7 @@ public enum SystemReader {
             names = Array(Set((names ?? []) + more)).sorted()
         }
         space.snapshots = names.map { $0.map(SystemText.snapshot) }
-        if let sysctl = tool("sysctl", system: "/usr/sbin/sysctl", context: context), let text = run(sysctl, ["vm.swapusage"]) {
+        if let sysctl = CommandLocator.system("sysctl", at: "/usr/sbin/sysctl", in: context), let text = run(sysctl, ["vm.swapusage"]) {
             space.swapBytes = SystemText.swapTotal(String(decoding: text, as: UTF8.self))
         }
         let root = context.root.path == "/" ? "" : context.root.path
@@ -65,12 +65,6 @@ public enum SystemReader {
 
     /// The figures with their meaning.
     public static func lines(_ space: SystemSpace) -> [SystemLine] { SystemText.lines(space) }
-
-    /// A system tool: its own path, or for a fixture only `<home>/bin`.
-    static func tool(_ name: String, system: String, context: CleanupContext) -> String? {
-        let path = context.isFixture ? context.home.path + "/bin/" + name : system
-        return FileManager.default.isExecutableFile(atPath: path) ? path : nil
-    }
 
     static func run(_ tool: String, _ arguments: [String]) -> Data? {
         guard let output = CommandRunner.run(tool, arguments, timeout: 60), output.succeeded else { return nil }
