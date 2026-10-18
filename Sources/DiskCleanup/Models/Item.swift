@@ -16,6 +16,8 @@ public struct Item: Codable, Equatable, Sendable {
     public let path: String
     /// Allocated bytes; `nil` where the size cannot be known (a snapshot).
     public var bytes: Int64?
+    /// `bytes` with every APFS clone counted in full; `nil` when not measured.
+    public var apparentBytes: Int64?
     public var tier: Tier
     public let removal: Removal
     public let regenerable: Bool
@@ -37,12 +39,13 @@ public struct Item: Codable, Equatable, Sendable {
     public init(id: String, rule: String, category: CleanupCategory, path: String, bytes: Int64?,
                 tier: Tier, removal: Removal, regenerable: Bool, owner: String?, newest: Date?,
                 visibility: Visibility, protected: String?, evidence: [String: String],
-                note: String?, identity: FileIdentity?, byIDOnly: Bool = false) {
+                note: String?, identity: FileIdentity?, byIDOnly: Bool = false, apparentBytes: Int64? = nil) {
         self.id = id
         self.rule = rule
         self.category = category
         self.path = path
         self.bytes = bytes
+        self.apparentBytes = apparentBytes
         self.tier = tier
         self.removal = removal
         self.regenerable = regenerable

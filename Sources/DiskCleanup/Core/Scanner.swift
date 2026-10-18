@@ -115,7 +115,8 @@ public enum Scanner {
                 tier: tier, removal: rule.removal, regenerable: rule.regenerable,
                 owner: candidate.evidence["tool"] ?? rule.owner, newest: newest,
                 visibility: measurement?.visibility ?? .visible, protected: protected,
-                evidence: evidence, note: rule.note, identity: identity, byIDOnly: candidate.byIDOnly
+                evidence: evidence, note: rule.note, identity: identity, byIDOnly: candidate.byIDOnly,
+                apparentBytes: measurement?.visibility == .notVisible ? nil : measurement?.apparentBytes
             ))
             if measurement?.visibility == .notVisible || measurement?.visibility == .partial {
                 notVisible.append(candidate.path)

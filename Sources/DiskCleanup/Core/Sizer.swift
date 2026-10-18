@@ -69,6 +69,7 @@ public enum Sizer {
             if result.newest.map({ modified > $0 }) ?? true { result.newest = modified }
             if kind == FTS_D {
                 result.bytes += Int64(stat.st_blocks) * 512
+                result.apparentBytes += Int64(stat.st_blocks) * 512
                 continue
             }
             if stat.st_nlink > 1 {
@@ -76,6 +77,7 @@ public enum Sizer {
             }
             result.files += 1
             let allocated = Int64(stat.st_blocks) * 512
+            result.apparentBytes += allocated
             result.bytes += kind == FTS_F ? clones.add(entry.pointee.fts_accpath, allocated: allocated) : allocated
         }
         if result.unreadable > 0 { result.visibility = .partial }

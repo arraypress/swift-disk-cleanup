@@ -14,6 +14,9 @@ public struct Measurement: Codable, Equatable, Sendable {
     /// outside the walk keep their shared blocks, so freeing it gives back
     /// "up to" this.
     public var bytes: Int64
+    /// The same with every clone counted in full — what `du` says. The gap to
+    /// `bytes` is what clones share.
+    public var apparentBytes: Int64
     /// Files, links and other leaves counted.
     public var files: Int
     /// The newest modification time of anything inside, the path included.
@@ -24,9 +27,10 @@ public struct Measurement: Codable, Equatable, Sendable {
     public var dataless: Int
     public var visibility: Visibility
 
-    public init(bytes: Int64 = 0, files: Int = 0, newest: Date? = nil, unreadable: Int = 0,
+    public init(bytes: Int64 = 0, apparentBytes: Int64? = nil, files: Int = 0, newest: Date? = nil, unreadable: Int = 0,
                 dataless: Int = 0, visibility: Visibility) {
         self.bytes = bytes
+        self.apparentBytes = apparentBytes ?? bytes
         self.files = files
         self.newest = newest
         self.unreadable = unreadable
