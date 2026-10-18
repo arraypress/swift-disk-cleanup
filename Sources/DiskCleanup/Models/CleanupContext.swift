@@ -44,12 +44,15 @@ public struct CleanupContext: Sendable {
     /// Environment overrides for caches that move (`HF_HUB_CACHE`, `UV_CACHE_DIR`).
     public var environment: [String: String]
     public var lookup: any ApplicationLookup
+    /// Installer receipts, signatures, launchd and quitting, for `uninstall`.
+    public var records: any InstallRecords
     public var now: Date
 
     public init(home: URL, isFixture: Bool, applicationFolders: [URL], installerFolders: [URL],
                 projectRoots: [URL], commandFolders: [URL], launchFolders: [URL], osBuild: String?,
                 osVersion: String?, journal: URL, trashFolder: URL?, environment: [String: String],
-                lookup: any ApplicationLookup, root: URL = URL(fileURLWithPath: "/"), now: Date = Date()) {
+                lookup: any ApplicationLookup, records: any InstallRecords = SystemInstallRecords(),
+                root: URL = URL(fileURLWithPath: "/"), now: Date = Date()) {
         self.home = home
         self.isFixture = isFixture
         self.applicationFolders = applicationFolders
@@ -64,6 +67,7 @@ public struct CleanupContext: Sendable {
         self.trashFolder = trashFolder
         self.environment = environment
         self.lookup = lookup
+        self.records = records
         self.now = now
     }
 }

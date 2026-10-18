@@ -23,7 +23,12 @@ enum PathSafety {
     ]
 
     /// Why `path` must never be removed, or `nil` when it may be.
-    static func reason(for path: String, catalogue: Catalogue, home: String) -> String? {
+    ///
+    /// - Parameter allowing: Protected places (catalogue entries, or system
+    ///   paths) whose contents — never the place itself — may go: an
+    ///   uninstall takes an app's own plist from ~/Library/Preferences, and
+    ///   names its launch daemon in the sudo line it prints.
+    static func reason(for path: String, catalogue: Catalogue, home: String, allowing: [String] = []) -> String? {
         let path = PathText.normalised(path)
         guard path.hasPrefix("/") else { return "not an absolute path" }
         if PathText.components(path).contains("..") { return "a path with .. in it" }
@@ -31,10 +36,14 @@ enum PathSafety {
         if PathText.isWithin(home, path) { return "the home folder or above it" }
         if PathText.components(path).count < 2 { return "a top-level folder" }
         for system in systemPaths where PathText.isWithin(path, system) {
+            if allowing.contains(system), path != system { continue }
             return "a system location (\(system))"
         }
         for entry in catalogue.protect {
             let protected = PathText.expand(entry, home: home)
+            if allowing.contains(entry), PathText.isWithin(path, protected), PathText.normalised(path) != PathText.normalised(protected) {
+                continue
+            }
             if PathText.overlaps(path, protected) {
                 return "protected (\(entry))"
             }

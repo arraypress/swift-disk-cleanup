@@ -48,6 +48,11 @@ enum PathText {
         isWithin(path, home) && path != home ? "~" + path.dropFirst(normalised(home).count) : path
     }
 
+    /// Single-quoted for a shell: `it's` → `'it'\''s'`.
+    static func shellQuoted(_ text: String) -> String {
+        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
     static func lastComponent(_ path: String) -> String {
         components(path).last ?? path
     }

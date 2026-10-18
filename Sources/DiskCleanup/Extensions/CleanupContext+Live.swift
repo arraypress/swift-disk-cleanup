@@ -44,6 +44,7 @@ public extension CleanupContext {
             trashFolder: isFixture ? at(".Trash") : nil,
             environment: environment,
             lookup: SystemApplicationLookup(home: home),
+            records: SystemInstallRecords(fixtureBin: isFixture ? at("bin") : nil),
             root: isFixture ? at("root") : URL(fileURLWithPath: "/")
         )
     }

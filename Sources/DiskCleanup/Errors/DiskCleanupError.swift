@@ -23,6 +23,10 @@ public enum DiskCleanupError: Error, Equatable, Sendable {
     case journal(String)
     /// A folder argument does not exist.
     case noSuchFolder(String)
+    /// An uninstall target diskmaid will not touch, and why.
+    case refusedTarget(String)
+    /// An app to uninstall is running; `--quit` closes it first.
+    case appRunning([String])
 }
 
 extension DiskCleanupError: LocalizedError {
@@ -35,6 +39,8 @@ extension DiskCleanupError: LocalizedError {
         case .journalEntryNotFound(let id): "nothing in the undo journal is called \(id)"
         case .journal(let reason): "the undo journal: \(reason)"
         case .noSuchFolder(let path): "no such folder: \(path)"
+        case .refusedTarget(let reason): reason
+        case .appRunning(let apps): "still running: \(apps.joined(separator: ", "))"
         }
     }
 }

@@ -54,6 +54,6 @@ public extension Removal {
     /// for everything diskmaid removes on its own.
     func byHand(_ path: String) -> String? {
         guard self == .sudo else { return nil }
-        return "sudo rm -rf '" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        return "sudo rm -rf " + PathText.shellQuoted(path)
     }
 }

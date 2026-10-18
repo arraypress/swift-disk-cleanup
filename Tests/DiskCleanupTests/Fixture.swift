@@ -19,12 +19,13 @@ import Foundation
 struct FixtureLookup: ApplicationLookup {
     var installed: Set<String> = []
     var silent: Set<String> = []
+    var running: Set<String> = []
     func launchServices(_ bundleID: String) -> AppAnswer {
         if silent.contains(bundleID) { return .noAnswer("timed out") }
         return installed.contains(bundleID) ? .installed([InstalledApp(bundleID: bundleID, path: "/x.app", version: "1", build: nil, name: nil)]) : .notInstalled
     }
     func spotlight(_ bundleID: String) -> AppAnswer { launchServices(bundleID) }
-    func runningBundleIDs() -> Set<String> { [] }
+    func runningBundleIDs() -> Set<String> { Set(running.map { $0.lowercased() }) }
 }
 
 struct Fixture {
@@ -55,6 +56,9 @@ struct Fixture {
     }
 
     func path(_ relative: String) -> String { home.path + "/" + relative }
+
+    /// Whether something is at `relative`, a broken symlink included.
+    func exists(_ relative: String) -> Bool { PathProbe.exists(path(relative)) }
 
     /// A file of `bytes` bytes.
     func file(_ relative: String, bytes: Int = 4096, contents: String? = nil) throws {

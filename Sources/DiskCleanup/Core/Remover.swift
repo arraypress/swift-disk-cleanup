@@ -25,13 +25,13 @@ public enum Remover {
     ///   - batch: The journal batch id for this run's trashed items.
     ///   - progress: Told before each item.
     public static func remove(_ items: [Item], catalogue: Catalogue, context: CleanupContext,
-                              batch: String = Remover.newBatchID(),
+                              batch: String = Remover.newBatchID(), allowing: [String] = [],
                               progress: ((Item) -> Void)? = nil) -> [RemovalOutcome] {
         var outcomes: [RemovalOutcome] = []
         var commandsRun: [[String]: RemovalOutcome.Result] = [:]
         for item in items {
             progress?(item)
-            outcomes.append(removeOne(item, catalogue: catalogue, context: context, batch: batch, commandsRun: &commandsRun))
+            outcomes.append(removeOne(item, catalogue: catalogue, context: context, batch: batch, allowing: allowing, commandsRun: &commandsRun))
         }
         return outcomes
     }
@@ -45,7 +45,7 @@ public enum Remover {
         return formatter.string(from: now) + "-" + UUID().uuidString.prefix(4).lowercased()
     }
 
-    static func removeOne(_ item: Item, catalogue: Catalogue, context: CleanupContext, batch: String,
+    static func removeOne(_ item: Item, catalogue: Catalogue, context: CleanupContext, batch: String, allowing: [String] = [],
                           commandsRun: inout [[String]: RemovalOutcome.Result]) -> RemovalOutcome {
         func skip(_ reason: String) -> RemovalOutcome {
             RemovalOutcome(id: item.id, path: item.path, result: .skipped, reason: reason)
@@ -57,7 +57,7 @@ public enum Remover {
         if let protected = item.protected { return skip(protected) }
         let isFile = item.path.hasPrefix("/")
         if isFile {
-            if let reason = PathSafety.reason(for: item.path, catalogue: catalogue, home: context.home.path) {
+            if let reason = PathSafety.reason(for: item.path, catalogue: catalogue, home: context.home.path, allowing: allowing) {
                 return skip(reason)
             }
             if let changed = hasChanged(item) { return skip(changed) }
