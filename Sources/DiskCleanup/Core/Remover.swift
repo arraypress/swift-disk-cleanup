@@ -109,7 +109,7 @@ public enum Remover {
             }
 
         case .sudo:
-            return RemovalOutcome(id: item.id, path: item.path, result: .skipped, to: item.removal.byHand(item.path),
+            return RemovalOutcome(id: item.id, path: item.path, result: .skipped, to: HandBack.line([item], among: [item]),
                                   reason: "owned by root: diskmaid does not ask for admin rights, so run the command yourself")
 
         case .delete:

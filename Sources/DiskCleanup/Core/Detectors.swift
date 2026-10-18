@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import os
 
 enum Detectors {
 
@@ -435,33 +436,17 @@ enum Detectors {
     /// (some Apple app is always installed), and a third party's matches its
     /// whole vendor. No answer, or an unreadable app, keeps it.
     static func appLibraries(_ rule: Rule, context: CleanupContext, shared: Shared) -> DetectorResult {
-        var result = paths(rule, context: context)
-        guard !result.candidates.isEmpty else { return result }
+        let contents = libraryContents(rule, context: context)
+        var result = contents.result
+        guard !result.candidates.isEmpty || !contents.orphaned.isEmpty || contents.held > 0 else { return result }
         guard shared.index.unreadable.isEmpty else {
             result.notes.append("\(rule.id): not judged — \(shared.index.unreadable.count) app(s) have an unreadable Info.plist")
             result.candidates = []
             return result
         }
-        let known = shared.index.knownIDs
-        let running = Set(shared.running.map { $0.lowercased() })
-        func installed(_ id: String) -> Bool? {
-            let present = BundleIDs.isApple(id)
-                ? known.ids.contains(id.lowercased()) || running.contains(id.lowercased())
-                : BundleIDs.isRelated(id, to: known.ids, vendors: known.vendors)
-                    || BundleIDs.isRelated(id, to: running, vendors: Set(running.map(BundleIDs.vendor)))
-            if present { return true }
-            for answer in [context.lookup.launchServices(id), context.lookup.spotlight(id)] {
-                switch answer {
-                case .installed: return true
-                case .noAnswer: return nil
-                case .notInstalled: continue
-                }
-            }
-            return false
-        }
         var answers: [Bool?] = []
         for id in rule.apps {
-            let answer = installed(id)
+            let answer = appInstalled(id, known: shared.index.knownIDs, running: shared.running, context: context)
             answers.append(answer)
             if answer != false { break }
         }
@@ -476,7 +461,90 @@ enum Detectors {
             result.candidates[index].evidence["apps"] = rule.apps.joined(separator: ", ")
             result.candidates[index].evidence["checked"] = "app folders, running apps, LaunchServices, Spotlight: none installed"
         }
+        if !contents.orphaned.isEmpty {
+            var receipts = Candidate(path: "pkgutil: receipts for content no longer on disk (\(rule.id))", evidence: [
+                "receipts": contents.orphaned.joined(separator: " "), "receiptCount": String(contents.orphaned.count),
+                "apps": rule.apps.joined(separator: ", "),
+            ])
+            receipts.bytes = 0
+            receipts.skipMeasure = true
+            receipts.isVirtual = true
+            result.candidates.append(receipts)
+        }
+        if contents.held > 0 { result.notes.append(heldNote(contents.held, rule: rule)) }
         return result
+    }
+
+    /// An app library's folders that are here, each with the forgettable
+    /// receipts that own files in it; forgettable receipts whose files are
+    /// all gone; and how many receipts macOS holds (SIP), which no one can
+    /// forget. Receipts are found by what they list (`pkgutil --file-info`),
+    /// then read whole: one that also owns files outside the rule's paths
+    /// is left alone. Whether the apps are installed is the caller's to ask.
+    static func libraryContents(_ rule: Rule, context: CleanupContext) -> (result: DetectorResult, orphaned: [String], held: Int) {
+        var result = paths(rule, context: context)
+        let root = context.root.path == "/" ? "" : context.root.path
+        let places = rule.paths.map { PathText.expand($0, home: context.home.path) }
+        var owners = Set<String>()
+        for place in places { owners.formUnion(context.records.owners(of: place) ?? []) }
+        let ids = owners.sorted()
+        let held = ids.filter { UninstallMatch.isSystemHeld(context.records.receiptStore($0)) }
+        let forgettable = ids.filter { !held.contains($0) }
+        let read = OSAllocatedUnfairLock(initialState: [String: PackageReceipt]())
+        DispatchQueue.concurrentPerform(iterations: forgettable.count) { index in
+            if let receipt = context.records.receipt(forgettable[index]) { read.withLock { $0[receipt.id] = receipt } }
+        }
+        let receipts = read.withLock { $0 }
+        var orphaned: [String] = []
+        var elsewhere = 0
+        for id in forgettable {
+            guard let receipt = receipts[id], PathText.components(receipt.volume).isEmpty else { continue }
+            let listed = UninstallMatch.listedPaths(receipt)
+            guard listed.allSatisfy({ path in places.contains { PathText.overlaps(path, $0) } }) else {
+                elsewhere += 1
+                continue
+            }
+            let owned = places.filter { place in listed.contains { PathText.isWithin($0, place) } }
+            let present = result.candidates.indices.filter { owned.contains(String(result.candidates[$0].path.dropFirst(root.count))) }
+            if present.isEmpty { orphaned.append(id) }
+            for index in present {
+                let earlier = result.candidates[index].evidence["receipts"].map { $0 + " " } ?? ""
+                result.candidates[index].evidence["receipts"] = earlier + id
+            }
+        }
+        if elsewhere > 0 {
+            result.notes.append("\(rule.id): \(elsewhere) receipt(s) also own files outside it, so they are left alone")
+        }
+        return (result, orphaned, held.count)
+    }
+
+    /// The note for receipts macOS keeps however the files went.
+    static func heldNote(_ count: Int, rule: Rule) -> String {
+        var apps = (rule.owner ?? "its app").components(separatedBy: ", ")
+        let last = apps.removeLast()
+        let who = apps.isEmpty ? last : apps.joined(separator: ", ") + " or " + last
+        return "\(count) Apple content \(count == 1 ? "receipt remains" : "receipts remain"); macOS protects them; \(who) can download the sounds again from its Sound Library menu."
+    }
+
+    /// Whether an app is installed: the app folders and running apps first
+    /// (an Apple id exactly, anyone else's by vendor), then LaunchServices
+    /// and Spotlight. `nil` when they did not answer, which keeps data.
+    static func appInstalled(_ id: String, known: (ids: Set<String>, vendors: Set<String>), running: Set<String>,
+                             context: CleanupContext) -> Bool? {
+        let running = Set(running.map { $0.lowercased() })
+        let present = BundleIDs.isApple(id)
+            ? known.ids.contains(id.lowercased()) || running.contains(id.lowercased())
+            : BundleIDs.isRelated(id, to: known.ids, vendors: known.vendors)
+                || BundleIDs.isRelated(id, to: running, vendors: Set(running.map(BundleIDs.vendor)))
+        if present { return true }
+        for answer in [context.lookup.launchServices(id), context.lookup.spotlight(id)] {
+            switch answer {
+            case .installed: return true
+            case .noAnswer: return nil
+            case .notInstalled: continue
+            }
+        }
+        return false
     }
 
     static func groupContainers(_ rule: Rule, context: CleanupContext, shared: Shared) -> DetectorResult {

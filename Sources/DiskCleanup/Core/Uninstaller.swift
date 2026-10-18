@@ -18,6 +18,12 @@
 //  4. review: folders and dotfiles whose name holds its name or the
 //     vendor's, and anything another installed app also uses.
 //
+//  An app a catalogue rule ties to a library outside the home folder
+//  (GarageBand, Logic Pro and MainStage to their sound library) brings that
+//  rule's folders and receipts along, judged by the rule's own code. A
+//  receipt macOS keeps under SIP is never offered for forgetting: there
+//  `pkgutil --forget` says it worked and changes nothing.
+//
 //  No symlink is followed out of where it matched; nothing under /System,
 //  no Apple app in /System/Applications and nothing the catalogue protects
 //  (bar an app's own plist and group container) is ever offered.
@@ -62,15 +68,7 @@ public enum Uninstaller {
     /// itself: root-owned paths, system launch jobs, and the receipts whose
     /// every path is being taken. `nil` when there is none.
     public static func byHand(_ taking: [Item], plan: UninstallPlan) -> String? {
-        let ids = Set(taking.map(\.id))
-        let receipts = plan.identity.receipts.filter { receipt in
-            plan.items.filter { $0.evidence["receipt"] == receipt }.allSatisfy { ids.contains($0.id) }
-        }
-        return UninstallMatch.byHand(
-            paths: taking.filter { $0.removal == .sudo }.map(\.path),
-            systemJobs: taking.compactMap { $0.evidence["launchDomain"] == "system" ? $0.evidence["launchLabel"] : nil },
-            receipts: receipts
-        )
+        HandBack.line(taking, among: plan.items, receipts: plan.identity.receipts)
     }
 
     /// Takes `items`: refuses while the app runs unless `quit` (then asks it
@@ -129,6 +127,8 @@ public enum Uninstaller {
         var identity = UninstallIdentity(input: "")
         var index = AppIndex(apps: [:], unreadable: [])
         var receipts: [PackageReceipt] = []
+        /// Matched receipts macOS holds: they find files, but are never forgotten.
+        var held: Set<String> = []
         var found: [String: Found] = [:]
         var notes: [String] = []
 
@@ -242,8 +242,15 @@ public enum Uninstaller {
                 let byVendor = identity.vendor.map { lowered.hasPrefix($0 + ".") } ?? false
                 let byName = nameOnly && !BundleIDs.isApple(id) && tokens.contains { UninstallMatch.folded(id).contains($0) }
                 guard lowered == input || byBundle || byVendor || byName, let receipt = context.records.receipt(id) else { continue }
-                identity.receipts.append(id)
+                if UninstallMatch.isSystemHeld(context.records.receiptStore(id)) {
+                    held.insert(id)
+                } else {
+                    identity.receipts.append(id)
+                }
                 receipts.append(receipt)
+            }
+            if !held.isEmpty {
+                notes.append("\(held.count) receipt\(held.count == 1 ? "" : "s") macOS keeps under SIP (\(UninstallMatch.systemReceipts)) cannot be forgotten, so the sudo line leaves them")
             }
         }
 
@@ -260,6 +267,7 @@ public enum Uninstaller {
                 }
             }
             collectLibrary()
+            collectAppLibraries()
             collectLaunchJobs()
             collectHelpers()
             collectGroupContainers()
@@ -284,7 +292,7 @@ public enum Uninstaller {
                         && ownsWhole(path, relative: relative, listed: listed))
                 guard owned else { continue }
                 taken.append(relative)
-                add(path, .exact, "receipt \(receipt.id)", ["receipt": receipt.id])
+                add(path, .exact, "receipt \(receipt.id)", [held.contains(receipt.id) ? "heldReceipt" : "receipt": receipt.id])
             }
         }
 
@@ -318,6 +326,34 @@ public enum Uninstaller {
                         add(library + "/" + folder + "/" + name, .exact, "named by bundle id \(id)")
                     }
                 }
+            }
+        }
+
+        /// The libraries a catalogue rule ties to this app, gathered by the
+        /// rule's own code: likely while none of the rule's other apps is
+        /// installed, review — saying who — while one is.
+        mutating func collectAppLibraries() {
+            let known = index.knownIDs
+            let running = context.lookup.runningBundleIDs()
+            for rule in catalogue.rules where rule.detector == .appLibraries {
+                let ours = rule.apps.filter { bundleIDs.contains($0.lowercased()) }
+                guard !ours.isEmpty else { continue }
+                let users = rule.apps.filter { id in
+                    !ours.contains(id) && Detectors.appInstalled(id, known: known, running: running, context: context) != false
+                }
+                let names = users.map { index.apps[$0.lowercased()]?.first?.name ?? $0 }.joined(separator: ", ")
+                let contents = Detectors.libraryContents(rule, context: context)
+                for candidate in contents.result.candidates {
+                    var evidence = candidate.evidence
+                    if !users.isEmpty { evidence["sharedWith"] = names }
+                    add(candidate.path, users.isEmpty ? .likely : .review, "\(rule.id): \(rule.owner ?? "its apps")' library", evidence)
+                }
+                if users.isEmpty {
+                    identity.receipts += contents.orphaned.filter { !identity.receipts.contains($0) }
+                } else if !contents.orphaned.isEmpty {
+                    notes.append("\(rule.id): \(contents.orphaned.count) receipt\(contents.orphaned.count == 1 ? "" : "s") for content no longer on disk stay — \(names) still uses them")
+                }
+                if contents.held > 0 { notes.append(Detectors.heldNote(contents.held, rule: rule)) }
             }
         }
 

@@ -18,11 +18,14 @@ import Testing
 final class FixtureRecords: InstallRecords {
     let receipts: [String: PackageReceipt]
     let teams: [String: String]
+    /// Receipts kept where macOS keeps its own; the rest are in /var/db/receipts.
+    let held: Set<String>
     private let calls = OSAllocatedUnfairLock(initialState: (quits: [String](), bootouts: [String]()))
 
-    init(receipts: [PackageReceipt] = [], teams: [String: String] = [:]) {
+    init(receipts: [PackageReceipt] = [], teams: [String: String] = [:], held: Set<String> = []) {
         self.receipts = Dictionary(uniqueKeysWithValues: receipts.map { ($0.id, $0) })
         self.teams = teams
+        self.held = held
     }
 
     var quits: [String] { calls.withLock { $0.quits } }
@@ -30,6 +33,12 @@ final class FixtureRecords: InstallRecords {
 
     func packageIDs() -> [String]? { receipts.keys.sorted() }
     func receipt(_ id: String) -> PackageReceipt? { receipts[id] }
+    func owners(of path: String) -> [String]? {
+        receipts.values.filter { UninstallMatch.listedPaths($0).contains(path) }.map(\.id).sorted()
+    }
+    func receiptStore(_ id: String) -> String? {
+        held.contains(id) ? "/Library/Apple/System/Library/Receipts" : "/var/db/receipts"
+    }
     func teamID(appAt path: String) -> String? { teams[PathText.lastComponent(path)] }
     func quit(_ bundleID: String) -> Bool { calls.withLock { $0.quits.append(bundleID) }; return false }
     func bootout(label: String) -> Bool { calls.withLock { $0.bootouts.append(label) }; return true }
@@ -167,9 +176,24 @@ struct UninstallTests {
         // Everything a receipt owns is taken, so each receipt is forgotten — by a person, with sudo.
         let taking = Uninstaller.select(plan, ids: [], includeReview: false).take
         let line = try #require(Uninstaller.byHand(taking, plan: plan))
-        #expect(line.contains("sudo pkgutil --forget 'com.valhalladsp.ValhallaRoom.pkg.au'"))
+        // Five receipts: forgotten in one loop, after the files.
+        #expect(line.hasPrefix("for id in ") && line.contains("'com.valhalladsp.ValhallaRoom.pkg.au'"), "\(line)")
+        #expect(line.hasSuffix("; do sudo pkgutil --forget \"$id\"; done"))
         #expect(!line.contains("serum"))
         #expect(!line.contains("rm -rf"))   // all of it is this user's in a fixture
+    }
+
+    @Test func aReceiptMacOSHoldsFindsFilesButIsNeverForgotten() throws {
+        let fixture = try Fixture.make()
+        defer { fixture.remove() }
+        let valhalla = try UninstallTests.valhalla(fixture)
+        let records = FixtureRecords(receipts: Array(valhalla.receipts.values), held: ["com.valhalladsp.ValhallaRoom.pkg.au"])
+        let plan = try plan("com.valhalladsp", fixture, records: records)
+        let component = try #require(plan.items.first { $0.path.hasSuffix("ValhallaRoom.component") })
+        #expect(component.evidence["match"] == "exact" && component.evidence["heldReceipt"] == "com.valhalladsp.ValhallaRoom.pkg.au")
+        let line = try #require(Uninstaller.byHand(Uninstaller.select(plan, ids: [], includeReview: false).take, plan: plan))
+        #expect(!line.contains("pkg.au") && line.contains("'com.valhalladsp.ValhallaRoom.pkg.vst3'"), "\(line)")
+        #expect(plan.notes.contains { $0.hasPrefix("1 receipt macOS keeps under SIP") })
     }
 
     @Test func rootOwnedPathsJoinTheSudoLine() throws {
@@ -183,7 +207,7 @@ struct UninstallTests {
         #expect(component.removal == .sudo)
         let taking = Uninstaller.select(plan, ids: [], includeReview: false).take
         let line = try #require(Uninstaller.byHand(taking, plan: plan))
-        #expect(line.hasPrefix("sudo rm -rf '\(component.path)' && sudo pkgutil --forget"), "\(line)")
+        #expect(line.hasPrefix("sudo rm -rf '\(component.path)' && for id in "), "\(line)")
         let outcomes = try Uninstaller.remove(taking, plan: plan, quit: false, catalogue: try Catalogue.builtIn(),
                                               context: context(fixture, records: records))
         #expect(outcomes.first { $0.path == component.path }?.result == .skipped)

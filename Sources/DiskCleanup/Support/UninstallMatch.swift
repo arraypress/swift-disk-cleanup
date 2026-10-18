@@ -31,6 +31,27 @@ enum UninstallMatch {
         return prefix + "/" + parts.joined(separator: "/")
     }
 
+    /// Where macOS keeps its own receipts, SIP-restricted: they cannot be forgotten.
+    static let systemReceipts = "/Library/Apple/System/Library/Receipts"
+
+    /// Whether a receipt kept in `store` is macOS's to keep.
+    static func isSystemHeld(_ store: String?) -> Bool {
+        store.map { PathText.isWithin($0, systemReceipts) } ?? false
+    }
+
+    /// The `pkgid:` lines of `pkgutil --file-info`.
+    static func owners(fromFileInfo text: String) -> [String] {
+        text.split(whereSeparator: \.isNewline).compactMap { line in
+            line.hasPrefix("pkgid: ") ? String(line.dropFirst("pkgid: ".count)) : nil
+        }
+    }
+
+    /// Every path a receipt lists, absolute on its volume (`/Library/…`).
+    static func listedPaths(_ receipt: PackageReceipt) -> [String] {
+        let base = PathText.components(receipt.location)
+        return receipt.files.map { "/" + (base + PathText.components($0)).joined(separator: "/") }
+    }
+
     /// `TeamIdentifier=ABCDE12345` from `codesign -dv`; `nil` when unsigned or ad hoc.
     static func teamID(fromCodesign text: String) -> String? {
         for line in text.split(whereSeparator: \.isNewline) where line.hasPrefix("TeamIdentifier=") {
@@ -92,7 +113,12 @@ enum UninstallMatch {
     static func byHand(paths: [String], systemJobs: [String], receipts: [String]) -> String? {
         var steps: [String] = []
         if !paths.isEmpty { steps.append("sudo rm -rf " + paths.map(PathText.shellQuoted).joined(separator: " ")) }
-        steps += receipts.map { "sudo pkgutil --forget " + PathText.shellQuoted($0) }
+        // A few receipts read best one by one; hundreds (Apple's sound content) as a loop.
+        if receipts.count <= 3 {
+            steps += receipts.map { "sudo pkgutil --forget " + PathText.shellQuoted($0) }
+        } else {
+            steps.append("for id in " + receipts.map(PathText.shellQuoted).joined(separator: " ") + "; do sudo pkgutil --forget \"$id\"; done")
+        }
         let unload = systemJobs.map { "sudo launchctl bootout system/" + PathText.shellQuoted($0) }.joined(separator: "; ")
         guard !steps.isEmpty || !unload.isEmpty else { return nil }
         // Unloading may say "not loaded"; that must not stop the removal after it.

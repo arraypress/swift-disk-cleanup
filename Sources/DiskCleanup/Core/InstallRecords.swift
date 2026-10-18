@@ -18,6 +18,13 @@ public protocol InstallRecords: Sendable {
     func packageIDs() -> [String]?
     /// One receipt with every path it lists.
     func receipt(_ id: String) -> PackageReceipt?
+    /// The receipts that list `path` (on the startup disk), whether or not
+    /// it is still there; `nil` when pkgutil did not answer.
+    func owners(of path: String) -> [String]?
+    /// The folder holding a receipt's .plist and .bom: /var/db/receipts, or
+    /// SIP-restricted /Library/Apple/System/Library/Receipts, where
+    /// `pkgutil --forget` reports success and changes nothing.
+    func receiptStore(_ id: String) -> String?
     /// The team id an app is signed with, if any.
     func teamID(appAt path: String) -> String?
     /// Asks a running app to quit and waits for it. Whether it is gone.
@@ -55,6 +62,19 @@ public struct SystemInstallRecords: InstallRecords {
               let info = CommandRunner.run(pkgutil, ["--pkg-info", id], timeout: 60), info.succeeded,
               let files = CommandRunner.run(pkgutil, ["--files", id], timeout: 120), files.succeeded else { return nil }
         return UninstallMatch.receipt(id: id, info: info.text, files: files.text)
+    }
+
+    public func owners(of path: String) -> [String]? {
+        guard let pkgutil = tool("pkgutil", system: "/usr/sbin/pkgutil"),
+              let output = CommandRunner.run(pkgutil, ["--file-info", path], timeout: 60), output.succeeded else { return nil }
+        return UninstallMatch.owners(fromFileInfo: output.text)
+    }
+
+    public func receiptStore(_ id: String) -> String? {
+        guard fixtureBin == nil else { return nil }
+        return [UninstallMatch.systemReceipts, "/var/db/receipts"].first { folder in
+            FileManager.default.fileExists(atPath: folder + "/" + id + ".plist") || FileManager.default.fileExists(atPath: folder + "/" + id + ".bom")
+        }
     }
 
     public func teamID(appAt path: String) -> String? {
