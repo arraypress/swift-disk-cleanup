@@ -21,14 +21,18 @@ public struct ScanScope: Sendable {
     public var includeRecent: Bool
     /// Worker threads for measuring.
     public var parallelism: Int
+    /// Walk what is found to size it; off, items carry only what their
+    /// detector knew — for labelling places, where sizes come from elsewhere.
+    public var measure: Bool
 
     public init(categories: Set<CleanupCategory> = [], projectRoots: [URL]? = nil, installerFolders: [URL]? = nil,
-                depth: Int = 6, includeRecent: Bool = false, parallelism: Int = 6) {
+                depth: Int = 6, includeRecent: Bool = false, parallelism: Int = 6, measure: Bool = true) {
         self.categories = categories
         self.projectRoots = projectRoots
         self.installerFolders = installerFolders
         self.depth = depth
         self.includeRecent = includeRecent
         self.parallelism = parallelism
+        self.measure = measure
     }
 }

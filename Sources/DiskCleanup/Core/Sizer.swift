@@ -91,7 +91,13 @@ public enum Sizer {
 
         /// What a file adds that this tally has not counted already.
         mutating func add(_ path: UnsafePointer<CChar>, allocated: Int64) -> Int64 {
-            guard allocated >= Sizer.cloneFloor, let clone = Sizer.cloneShare(path) else { return allocated }
+            add(allocated >= Sizer.cloneFloor ? Sizer.cloneShare(path) : nil, allocated: allocated)
+        }
+
+        /// The same, for a file whose clone id was read already — one read
+        /// serving every folder it is in.
+        mutating func add(_ clone: (id: UInt64, privateBytes: Int64)?, allocated: Int64) -> Int64 {
+            guard let clone else { return allocated }
             let shared = max(0, allocated - clone.privateBytes)
             let before = counted[clone.id] ?? 0
             counted[clone.id] = max(before, shared)

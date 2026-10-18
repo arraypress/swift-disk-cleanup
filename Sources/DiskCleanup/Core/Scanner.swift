@@ -80,8 +80,8 @@ public enum Scanner {
         let jobs = found.enumerated().map { ($0.offset, $0.element.candidate) }
         DispatchQueue.concurrentPerform(iterations: jobs.count) { index in
             let (offset, candidate) = jobs[index]
-            let measurement = candidate.skipMeasure || candidate.isVirtual ? nil : Sizer.measure(candidate.path)
-            let git = candidate.checkGit && candidate.protected == nil ? GitCheck.protection(candidate.path) : nil
+            let measurement = candidate.skipMeasure || candidate.isVirtual || !options.measure ? nil : Sizer.measure(candidate.path)
+            let git = options.measure && candidate.checkGit && candidate.protected == nil ? GitCheck.protection(candidate.path) : nil
             measured.withLock { $0[offset] = (measurement, git) }
         }
         let results = measured.withLock { $0 }
