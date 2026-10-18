@@ -12,8 +12,9 @@ public enum Restorer {
 
     /// Restores the last batch (`target` nil), a batch, or one entry. Nothing
     /// is ever overwritten: if something now sits at the original path, the
-    /// entry stays in the Trash and says so.
-    public static func undo(_ target: String?, journal: URL) throws(DiskCleanupError) -> [RestoreOutcome] {
+    /// entry stays in the Trash and says so. Given a `context`, a launch
+    /// agent `startup` removed is loaded again once it is back.
+    public static func undo(_ target: String?, journal: URL, context: CleanupContext? = nil) throws(DiskCleanupError) -> [RestoreOutcome] {
         var entries = try JournalStore.load(journal)
         let chosen = try JournalStore.select(entries, target: target)
         var outcomes: [RestoreOutcome] = []
@@ -38,7 +39,11 @@ public enum Restorer {
                 try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
                 try FileManager.default.moveItem(atPath: entry.trashed, toPath: entry.original)
                 entries[index].restoredAt = Date()
-                outcomes.append(RestoreOutcome(entry: entry.id, original: entry.original, result: .restored))
+                var reason: String?
+                if entry.rule == Startup.rule, let context {
+                    reason = Startup.bootstrap(entry.original, context: context).map { "back, but not loaded again: \($0)" }
+                }
+                outcomes.append(RestoreOutcome(entry: entry.id, original: entry.original, result: .restored, reason: reason))
             } catch {
                 outcomes.append(RestoreOutcome(entry: entry.id, original: entry.original, result: .failed,
                                                reason: error.localizedDescription))
