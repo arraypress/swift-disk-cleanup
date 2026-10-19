@@ -26,10 +26,13 @@ public struct CategoryTotal: Codable, Equatable, Sendable {
     public let protectedBytes: Int64
     /// The tiers present.
     public let tiers: [Tier]
+    /// What the person's ignore list holds back — in `bytes`, and in none of
+    /// safe, review, report or protected.
+    public let ignoredBytes: Int64
 
     public init(category: CleanupCategory, visibility: Visibility, items: Int, bytes: Int64,
                 safeBytes: Int64, reviewBytes: Int64, reportBytes: Int64, protectedBytes: Int64,
-                tiers: [Tier]) {
+                tiers: [Tier], ignoredBytes: Int64 = 0) {
         self.category = category
         self.visibility = visibility
         self.items = items
@@ -39,5 +42,6 @@ public struct CategoryTotal: Codable, Equatable, Sendable {
         self.reportBytes = reportBytes
         self.protectedBytes = protectedBytes
         self.tiers = tiers
+        self.ignoredBytes = ignoredBytes
     }
 }

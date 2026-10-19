@@ -15,7 +15,8 @@ public extension CleanupContext {
     /// - Parameter home: A stand-in home folder. Everything is then read from
     ///   inside it, the Trash is `<home>/.Trash`, and commands are looked for
     ///   only in `<home>/bin` — the real `brew`, `xcrun` and `tmutil` are out
-    ///   of reach, and `/Library/…` rules read `<home>/root/Library/…`.
+    ///   of reach, `/Library/…` rules read `<home>/root/Library/…`, and the
+    ///   Dock is `<home>/Library/Preferences/com.apple.dock.plist`, never the real one.
     static func live(home: URL? = nil, environment: [String: String] = ProcessInfo.processInfo.environment) -> CleanupContext {
         let realHome = FileManager.default.homeDirectoryForCurrentUser
         let isFixture = home != nil
@@ -45,7 +46,10 @@ public extension CleanupContext {
             environment: environment,
             lookup: SystemApplicationLookup(home: home),
             records: SystemInstallRecords(fixtureBin: isFixture ? at("bin") : nil),
-            root: isFixture ? at("root") : URL(fileURLWithPath: "/")
+            root: isFixture ? at("root") : URL(fileURLWithPath: "/"),
+            // A fixture's Dock is a plain file in it; the real one goes through cfprefsd.
+            dock: isFixture ? FileDockPreferences(file: at("Library/Preferences/com.apple.dock.plist"), killall: at("bin/killall"))
+                            : SystemDockPreferences()
         )
     }
 }

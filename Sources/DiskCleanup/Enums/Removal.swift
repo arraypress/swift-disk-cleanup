@@ -23,4 +23,8 @@ public enum Removal: Equatable, Hashable, Sendable {
     /// Owned by root. diskmaid never asks for admin rights: it prints
     /// `sudo rm -rf <path>` for a person to run, and leaves it.
     case sudo
+    /// The app's Dock icon: the Dock's preferences edited through cfprefsd,
+    /// the exact original kept in the undo journal. Only `uninstall` makes
+    /// these; the catalogue cannot name it.
+    case dock
 }

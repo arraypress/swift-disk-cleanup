@@ -64,6 +64,7 @@ public enum BigFiles {
                 newest: record.modified ?? measured.newest, visibility: .visible, protected: protected, evidence: evidence,
                 note: nil, identity: Sizer.identity(record.path, bytes: measured.bytes), apparentBytes: measured.apparentBytes
             ))
+            items[items.count - 1].ignored = context.ignore.reason(for: items[items.count - 1], home: context.home.path)
         }
         return (items.sorted { ($0.bytes ?? 0) > ($1.bytes ?? 0) }, [])
     }

@@ -123,8 +123,11 @@ public enum Scanner {
             }
         }
 
-        // 4. One item per path.
-        let kept = Claims.resolve(items).kept
+        // 4. One item per path, and what the person said to leave alone.
+        var kept = Claims.resolve(items).kept
+        for index in kept.indices {
+            kept[index].ignored = context.ignore.reason(for: kept[index], home: context.home.path)
+        }
 
         return ScanReport(
             categories: Totals.categories(kept, visibility: visibility, scanned: scanned),

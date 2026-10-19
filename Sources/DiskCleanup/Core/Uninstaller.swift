@@ -12,7 +12,8 @@
 //     id's prefix or the vendor's (`com.apple` is never a vendor);
 //  2. exact: what a receipt owns (the deepest paths it owns whole, never a
 //     shared parent like Library/Application Support/Avid), the app, the
-//     ~/Library places named by its bundle id, its launch jobs and helpers;
+//     ~/Library places named by its bundle id, its launch jobs and helpers,
+//     and its icon in the Dock (kept or recent), by bundle id or app path;
 //  3. likely: group containers of its team or vendor, and audio plug-ins
 //     whose bundle id has the vendor's prefix;
 //  4. review: folders and dotfiles whose name holds its name or the
@@ -130,6 +131,8 @@ public enum Uninstaller {
         /// Matched receipts macOS holds: they find files, but are never forgotten.
         var held: Set<String> = []
         var found: [String: Found] = [:]
+        /// The app's icons in the Dock.
+        var dock: [DockEdit.Tile] = []
         var notes: [String] = []
 
         init(context: CleanupContext, catalogue: Catalogue) {
@@ -273,6 +276,13 @@ public enum Uninstaller {
             collectGroupContainers()
             collectPlugIns()
             collectNames()
+            collectDock()
+        }
+
+        /// The app's tiles in the Dock's kept and recent icons.
+        mutating func collectDock() {
+            guard !identity.bundleIDs.isEmpty || !identity.apps.isEmpty else { return }
+            dock = DockEdit.tiles(bundleIDs: identity.bundleIDs, apps: identity.apps, dock: context.dock)
         }
 
         /// The deepest paths a receipt owns whole: a bundle it lists, a file it
@@ -498,6 +508,10 @@ public enum Uninstaller {
                 kept.append((path, entry.match))
                 items.append(item(path, entry))
             }
+            if let tile = dockItem() { items.append(tile) }
+            for index in items.indices {
+                items[index].ignored = context.ignore.reason(for: items[index], home: home)
+            }
             let running = context.lookup.runningBundleIDs()
             var notes = self.notes
             if identity.apps.isEmpty && !identity.bundleIDs.isEmpty {
@@ -505,6 +519,24 @@ public enum Uninstaller {
             }
             return UninstallPlan(identity: identity, items: items,
                                  running: identity.bundleIDs.filter { running.contains($0.lowercased()) }, notes: notes)
+        }
+
+        /// One item for all the app's Dock icons: exact, since the Dock itself
+        /// names the bundle id or the app's path.
+        func dockItem() -> Item? {
+            guard !dock.isEmpty else { return nil }
+            let names = Array(Set(dock.compactMap(\.label))).sorted()
+            let keys = Array(Set(dock.map(\.key))).sorted()
+            let shown = names.isEmpty ? (identity.names.first ?? identity.input) : names.joined(separator: ", ")
+            return Item(
+                id: ItemID.make(rule: "uninstall", path: "dock:" + identity.bundleIDs.joined(separator: ",") + "|" + identity.apps.joined(separator: ",")),
+                rule: "uninstall", category: .leftovers, path: "Dock icon: \(shown)", bytes: nil, tier: .safe, removal: .dock,
+                regenerable: false, owner: identity.names.first ?? identity.input, newest: nil, visibility: .visible, protected: nil,
+                evidence: ["match": "exact", "why": "its Dock icon (\(keys.joined(separator: ", ")))",
+                           "dockBundleIDs": identity.bundleIDs.joined(separator: "\n"), "dockApps": identity.apps.joined(separator: "\n"),
+                           "dockTiles": String(dock.count)],
+                note: nil, identity: nil
+            )
         }
 
         func item(_ path: String, _ entry: Found) -> Item {

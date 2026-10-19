@@ -35,11 +35,15 @@ public struct Item: Codable, Equatable, Sendable {
     /// Goes only when named by id, never with its category — for things where
     /// taking every one would leave none (two images of one simulator runtime).
     public var byIDOnly: Bool
+    /// `ignored (by you): …` when the person's ignore list holds it: shown,
+    /// never cleaned, uninstalled or offered, and totalled apart.
+    public var ignored: String?
 
     public init(id: String, rule: String, category: CleanupCategory, path: String, bytes: Int64?,
                 tier: Tier, removal: Removal, regenerable: Bool, owner: String?, newest: Date?,
                 visibility: Visibility, protected: String?, evidence: [String: String],
-                note: String?, identity: FileIdentity?, byIDOnly: Bool = false, apparentBytes: Int64? = nil) {
+                note: String?, identity: FileIdentity?, byIDOnly: Bool = false, apparentBytes: Int64? = nil,
+                ignored: String? = nil) {
         self.id = id
         self.rule = rule
         self.category = category
@@ -57,5 +61,6 @@ public struct Item: Codable, Equatable, Sendable {
         self.note = note
         self.identity = identity
         self.byIDOnly = byIDOnly
+        self.ignored = ignored
     }
 }

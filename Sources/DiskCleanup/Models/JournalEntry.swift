@@ -7,7 +7,8 @@
 
 import Foundation
 
-/// One move to the Trash, remembered so it can be put back.
+/// One move to the Trash, remembered so it can be put back — or one edit of
+/// the Dock's preferences (rule `dock`), with the exact arrays it replaced.
 public struct JournalEntry: Codable, Equatable, Sendable {
     /// Unique per entry.
     public let id: String
@@ -21,9 +22,15 @@ public struct JournalEntry: Codable, Equatable, Sendable {
     public let rule: String
     /// Set once `undo` has put it back.
     public var restoredAt: Date?
+    /// For a Dock edit: the preference values it replaced, exactly, as a
+    /// binary property list of key → value.
+    public var backup: Data?
+    /// For a Dock edit: what it wrote, so undo can tell whether the Dock has
+    /// changed since (and then leave it alone rather than overwrite).
+    public var after: Data?
 
     public init(id: String, batch: String, original: String, trashed: String, at: Date,
-                bytes: Int64?, rule: String, restoredAt: Date? = nil) {
+                bytes: Int64?, rule: String, restoredAt: Date? = nil, backup: Data? = nil, after: Data? = nil) {
         self.id = id
         self.batch = batch
         self.original = original
@@ -32,5 +39,7 @@ public struct JournalEntry: Codable, Equatable, Sendable {
         self.bytes = bytes
         self.rule = rule
         self.restoredAt = restoredAt
+        self.backup = backup
+        self.after = after
     }
 }

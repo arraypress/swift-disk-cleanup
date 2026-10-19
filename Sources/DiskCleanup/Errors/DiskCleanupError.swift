@@ -27,6 +27,8 @@ public enum DiskCleanupError: Error, Equatable, Sendable {
     case refusedTarget(String)
     /// An app to uninstall is running; `--quit` closes it first.
     case appRunning([String])
+    /// The ignore list could not be read or written: nothing that removes may run.
+    case ignoreList(String)
 }
 
 extension DiskCleanupError: LocalizedError {
@@ -41,6 +43,7 @@ extension DiskCleanupError: LocalizedError {
         case .noSuchFolder(let path): "no such folder: \(path)"
         case .refusedTarget(let reason): reason
         case .appRunning(let apps): "still running: \(apps.joined(separator: ", "))"
+        case .ignoreList(let reason): "the ignore list: \(reason)"
         }
     }
 }

@@ -12,10 +12,10 @@ import Foundation
 /// the Trash and the undo journal.
 ///
 /// ``CleanupContext/live(home:)`` builds the real one. Pointed at a fixture
-/// home it changes four things on purpose: app folders, launch agents and the
-/// Trash all come from inside that home, and commands are looked for ONLY in
-/// `<home>/bin` — so a test can never run the real `brew cleanup` or
-/// `simctl delete` against this Mac.
+/// home it changes five things on purpose: app folders, launch agents, the
+/// Trash and the Dock's preferences all come from inside that home, and
+/// commands are looked for ONLY in `<home>/bin` — so a test can never run the
+/// real `brew cleanup` or `simctl delete`, or edit the Dock, on this Mac.
 public struct CleanupContext: Sendable {
     public var home: URL
     /// Whether `home` is a stand-in rather than the user's own.
@@ -46,13 +46,18 @@ public struct CleanupContext: Sendable {
     public var lookup: any ApplicationLookup
     /// Installer receipts, signatures, launchd and quitting, for `uninstall`.
     public var records: any InstallRecords
+    /// The Dock's preferences, for taking an uninstalled app's icon out.
+    public var dock: any DockPreferences
+    /// What the person told diskmaid never to touch.
+    public var ignore: IgnoreList
     public var now: Date
 
     public init(home: URL, isFixture: Bool, applicationFolders: [URL], installerFolders: [URL],
                 projectRoots: [URL], commandFolders: [URL], launchFolders: [URL], osBuild: String?,
                 osVersion: String?, journal: URL, trashFolder: URL?, environment: [String: String],
                 lookup: any ApplicationLookup, records: any InstallRecords = SystemInstallRecords(),
-                root: URL = URL(fileURLWithPath: "/"), now: Date = Date()) {
+                root: URL = URL(fileURLWithPath: "/"), dock: any DockPreferences = SystemDockPreferences(),
+                ignore: IgnoreList = IgnoreList(), now: Date = Date()) {
         self.home = home
         self.isFixture = isFixture
         self.applicationFolders = applicationFolders
@@ -68,6 +73,8 @@ public struct CleanupContext: Sendable {
         self.environment = environment
         self.lookup = lookup
         self.records = records
+        self.dock = dock
+        self.ignore = ignore
         self.now = now
     }
 }

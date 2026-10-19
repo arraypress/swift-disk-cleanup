@@ -33,11 +33,12 @@ enum Totals {
                 visibility: Totals.visibility(seen),
                 items: mine.count,
                 bytes: sum { _ in true },
-                safeBytes: sum { $0.tier == .safe && $0.protected == nil },
-                reviewBytes: sum { $0.tier == .review && $0.protected == nil },
-                reportBytes: sum { $0.tier == .report },
-                protectedBytes: sum { $0.tier != .report && $0.protected != nil },
-                tiers: Tier.allCases.filter { tier in mine.contains { $0.tier == tier } }
+                safeBytes: sum { $0.ignored == nil && $0.tier == .safe && $0.protected == nil },
+                reviewBytes: sum { $0.ignored == nil && $0.tier == .review && $0.protected == nil },
+                reportBytes: sum { $0.ignored == nil && $0.tier == .report },
+                protectedBytes: sum { $0.ignored == nil && $0.tier != .report && $0.protected != nil },
+                tiers: Tier.allCases.filter { tier in mine.contains { $0.tier == tier } },
+                ignoredBytes: sum { $0.ignored != nil }
             )
         }
     }

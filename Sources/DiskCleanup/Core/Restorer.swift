@@ -13,7 +13,8 @@ public enum Restorer {
     /// Restores the last batch (`target` nil), a batch, or one entry. Nothing
     /// is ever overwritten: if something now sits at the original path, the
     /// entry stays in the Trash and says so. Given a `context`, a launch
-    /// agent `startup` removed is loaded again once it is back.
+    /// agent `startup` removed is loaded again once it is back, and a Dock
+    /// edit's icons are written back (only while the Dock is as it was left).
     public static func undo(_ target: String?, journal: URL, context: CleanupContext? = nil) throws(DiskCleanupError) -> [RestoreOutcome] {
         var entries = try JournalStore.load(journal)
         let chosen = try JournalStore.select(entries, target: target)
@@ -22,6 +23,16 @@ public enum Restorer {
             guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { continue }
             if entry.restoredAt != nil {
                 outcomes.append(RestoreOutcome(entry: entry.id, original: entry.original, result: .alreadyRestored))
+                continue
+            }
+            if entry.rule == DockEdit.rule {
+                guard let context else {
+                    outcomes.append(RestoreOutcome(entry: entry.id, original: entry.original, result: .failed, reason: "a Dock edit needs the context to undo"))
+                    continue
+                }
+                let (result, reason) = DockEdit.restore(entry, context: context)
+                if result == .restored { entries[index].restoredAt = Date() }
+                outcomes.append(RestoreOutcome(entry: entry.id, original: entry.original, result: result, reason: reason))
                 continue
             }
             guard PathProbe.exists(entry.trashed) else {

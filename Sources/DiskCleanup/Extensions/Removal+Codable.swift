@@ -16,6 +16,7 @@ extension Removal: Codable {
             case "trash": self = .trash
             case "delete": self = .delete
             case "sudo": self = .sudo
+            case "dock": self = .dock
             default:
                 throw DecodingError.dataCorruptedError(in: container, debugDescription: "removal must be trash, delete, sudo or a command array, not \(word)")
             }
@@ -35,6 +36,7 @@ extension Removal: Codable {
         case .delete: try container.encode("delete")
         case .command(let arguments): try container.encode(arguments)
         case .sudo: try container.encode("sudo")
+        case .dock: try container.encode("dock")
         }
     }
 }
@@ -47,6 +49,7 @@ public extension Removal {
         case .delete: "delete"
         case .command(let arguments): CommandTemplate.display(arguments)
         case .sudo: "sudo rm -rf"
+        case .dock: "dock"
         }
     }
 

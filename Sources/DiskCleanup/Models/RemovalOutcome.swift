@@ -16,6 +16,8 @@ public struct RemovalOutcome: Codable, Equatable, Sendable {
         case deleted
         /// The owning tool's command ran and succeeded.
         case commanded
+        /// A setting changed (the Dock's icons), the original journalled for undo.
+        case edited
         /// Not touched, on purpose (changed since planning, protected, gone).
         case skipped
         /// Tried and failed.

@@ -69,12 +69,13 @@ public enum Plugins {
                 let measured = Sizer.measure(path)
                 var itemID: String?
                 if let cannotLoad {
-                    let item = Item(id: ItemID.make(rule: rule, path: path), rule: rule, category: .leftovers, path: path,
+                    var item = Item(id: ItemID.make(rule: rule, path: path), rule: rule, category: .leftovers, path: path,
                                     bytes: measured.bytes, tier: .review, removal: Uninstaller.needsRoot(path) ? .sudo : .trash,
                                     regenerable: false, owner: id.map(BundleIDs.vendor), newest: measured.newest, visibility: measured.visibility,
                                     protected: PathSafety.reason(for: path, catalogue: catalogue, home: home),
                                     evidence: ["format": format, "cannotLoad": cannotLoad], note: nil,
                                     identity: Sizer.identity(path, bytes: measured.bytes), apparentBytes: measured.apparentBytes)
+                    item.ignored = context.ignore.reason(for: item, home: home)
                     items.append(item)
                     itemID = item.id
                 }

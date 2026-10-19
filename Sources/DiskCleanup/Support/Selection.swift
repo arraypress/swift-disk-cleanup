@@ -48,6 +48,7 @@ enum Selection {
     }
 
     static func holdReason(_ item: Item, named: Bool, includeReview: Bool, olderThanDays: Int?, now: Date) -> String? {
+        if let ignored = item.ignored { return ignored }
         if item.tier == .report { return "report only: never cleaned" }
         if let protected = item.protected { return protected }
         if item.tier == .review && !named && !includeReview { return "review tier" }

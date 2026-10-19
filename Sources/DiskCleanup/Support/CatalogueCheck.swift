@@ -42,6 +42,7 @@ enum CatalogueCheck {
                 if arguments.isEmpty { problems.append("\(label): empty command") }
                 if let first = arguments.first, first.contains("/") { problems.append("\(label): command names a path, not a tool") }
             }
+            if rule.removal == .dock { problems.append("\(label): a Dock edit is uninstall's own, never a rule's") }
             if let days = rule.minAgeDays, days < 0 { problems.append("\(label): negative minAgeDays") }
             guard rule.tier != .report else { continue }
             // Removable from here on.

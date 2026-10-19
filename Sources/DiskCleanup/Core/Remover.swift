@@ -7,7 +7,8 @@
 //  Acting on a plan, one item at a time, each one checked again first:
 //
 //  1. the path is still allowed (system and protected paths, re-checked here
-//     even though the scan already did — this is the last door);
+//     even though the scan already did — this is the last door), and the
+//     person has not told diskmaid to ignore it;
 //  2. it is still the same thing — device, inode, modification time and
 //     allocated size all as measured — or it is skipped as "changed";
 //  3. then trash (journalled for undo), delete, or the owning tool's command
@@ -59,6 +60,7 @@ public enum Remover {
         func fail(_ reason: String) -> RemovalOutcome {
             RemovalOutcome(id: item.id, path: item.path, result: .failed, reason: reason)
         }
+        if let ignored = context.ignore.reason(for: item, home: context.home.path) { return skip(ignored) }
         if item.tier == .report { return skip("report only") }
         if let protected = item.protected { return skip(protected) }
         let isFile = item.path.hasPrefix("/")
@@ -113,6 +115,9 @@ public enum Remover {
             } catch {
                 return fail(error.localizedDescription)
             }
+
+        case .dock:
+            return DockEdit.remove(item, context: context, batch: batch)
 
         case .sudo:
             return RemovalOutcome(id: item.id, path: item.path, result: .skipped, to: HandBack.line([item], among: [item]),
