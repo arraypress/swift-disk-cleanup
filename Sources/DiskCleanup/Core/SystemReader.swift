@@ -36,6 +36,7 @@ public enum SystemReader {
         let diskutil = CommandLocator.system("diskutil", at: "/usr/sbin/diskutil", in: context)
         if let diskutil, let info = run(diskutil, ["info", "-plist", "/"]), let container = SystemText.container(fromInfo: info) {
             space.container = container
+            space.health = DiskHealthText.health(fromInfo: info)
             if let list = run(diskutil, ["apfs", "list", "-plist"]) {
                 space.volumes = SystemText.volumes(fromList: list, container: container) ?? []
             }

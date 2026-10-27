@@ -60,6 +60,8 @@ public struct SystemSpace: Codable, Sendable {
     public var scannedApparentBytes: Int64?
     public var scannedBytes: Int64?
     public var notes: [String] = []
+    /// The startup drive's own health report, when it gives one.
+    public var health: DiskHealth?
 
     public init() {}
 }

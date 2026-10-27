@@ -76,6 +76,9 @@ enum SystemText {
             lines.append(SystemLine(key: "purgeable", label: "Purgeable", bytes: purgeable,
                                     meaning: "Space macOS counts as used but frees on demand — its own caches and local snapshots. Nothing to do."))
         }
+        if let health = space.health {
+            lines.append(SystemLine(key: "health", label: "Drive health", bytes: nil, meaning: DiskHealthText.meaning(health)))
+        }
         switch space.snapshots {
         case nil:
             lines.append(SystemLine(key: "snapshots", label: "Snapshots", bytes: nil, meaning: "Not known: tmutil and diskutil did not answer."))

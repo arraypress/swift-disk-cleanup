@@ -34,13 +34,15 @@ struct MaintenanceTests {
 
     @Test func theTasksAreTheHonestOnesAndRootsAreOneLine() {
         let tasks = Maintenance.tasks(volume: "/", logsOlderThan: 30)
-        #expect(tasks.map(\.id) == ["dns", "spotlight", "launch-services", "logs", "quicklook"])
+        #expect(tasks.map(\.id) == ["dns", "spotlight", "launch-services", "logs", "quicklook", "icon-cache", "verify-disk"])
         #expect(tasks.allSatisfy { !$0.fixes.isEmpty && !$0.title.isEmpty })
-        #expect(tasks.filter(\.needsRoot).map(\.id) == ["dns", "spotlight"])
+        #expect(tasks.filter(\.needsRoot).map(\.id) == ["dns", "spotlight", "icon-cache"])
         #expect(tasks.first { $0.id == "spotlight" }?.warning?.contains("an hour or more") == true)
         let lsregister = tasks.first { $0.id == "launch-services" }?.commands ?? []
         #expect(lsregister.allSatisfy { !$0.contains("-kill") } && lsregister.first?.suffix(4) == ["-r", "-f", "-all", "local,system,user"])
-        #expect(Maintenance.byHand(tasks) == "sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder && sudo mdutil -E /")
+        #expect(Maintenance.byHand(tasks) == "sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder && sudo mdutil -E / && "
+                + "sudo /bin/rm -rf /Library/Caches/com.apple.iconservices.store && "
+                + "sudo find /private/var/folders -name com.apple.dock.iconcache -delete && sudo killall Dock Finder")
         #expect(Maintenance.byHand(tasks.filter { !$0.needsRoot }) == nil)
         #expect(Maintenance.byHand(Maintenance.tasks(volume: "/Volumes/Big Disk").filter { $0.id == "spotlight" })
                 == "sudo mdutil -E '/Volumes/Big Disk'")

@@ -44,6 +44,18 @@ enum MaintenanceTasks {
                 id: "quicklook", title: "Reset the Quick Look cache",
                 fixes: "Stale or wrong thumbnails and previews in Finder and Quick Look.",
                 commands: [["/usr/bin/qlmanage", "-r", "cache"]], needsRoot: false),
+            MaintenanceTask(
+                id: "icon-cache", title: "Reset the icon caches",
+                fixes: "Wrong, blank or old app icons in Finder and the Dock that a Launch Services rebuild did not fix.",
+                commands: [["/bin/rm", "-rf", "/Library/Caches/com.apple.iconservices.store"],
+                           ["/usr/bin/find", "/private/var/folders", "-name", "com.apple.dock.iconcache", "-delete"],
+                           ["/usr/bin/killall", "Dock", "Finder"]],
+                needsRoot: true,
+                warning: "The Dock and Finder restart; icons redraw over the next minute."),
+            MaintenanceTask(
+                id: "verify-disk", title: "Check \(volume) for file system errors",
+                fixes: "Nothing by itself: it reads the volume and says whether it is sound (about 10 seconds on a live volume), so a repair is only tried when there is something to repair.",
+                commands: [["/usr/sbin/diskutil", "verifyVolume", volume]], needsRoot: false),
         ]
     }
 
