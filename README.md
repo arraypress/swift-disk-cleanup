@@ -60,7 +60,7 @@ Written for this library in its own words. [Mole](https://github.com/tw93/Mole),
 
 ## Requirements
 
-macOS 14+, Swift 6.2. No dependencies.
+macOS 14+, Swift 6.2. One dependency: [swift-sqlite-reader](https://github.com/arraypress/swift-sqlite-reader), which reads WhatsApp's database read-only.
 
 ## License
 

@@ -9,12 +9,13 @@
 //  has lost track of — a deleted chat's media, or a download that looped (one
 //  chat once held 72,000 clones of three files). The database is opened
 //  read-only and only read; missing, locked or shaped differently means "not
-//  checked", never "nothing unlisted".
+//  checked", never "nothing unlisted". It is read through
+//  swift-sqlite-reader, waiting up to two seconds for WhatsApp's lock.
 //
 
 import Darwin
 import Foundation
-import SQLite3
+import SQLiteReader
 
 enum ChatMedia {
 
@@ -71,38 +72,33 @@ enum ChatMedia {
 
     /// Every path the media table names, or why it could not be read.
     static func listedPaths(_ database: String) -> Result<Set<String>, Reason> {
-        var handle: OpaquePointer?
-        defer { sqlite3_close(handle) }
-        let uri = "file:" + (database.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? database) + "?mode=ro"
-        guard sqlite3_open_v2(uri, &handle, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else {
-            return .failure(Reason("ChatStorage.sqlite would not open"))
+        let store: SQLiteReader
+        do {
+            store = try SQLiteReader(path: URL(fileURLWithPath: database), opening: .readOnly, busyTimeout: 2)
+        } catch {
+            return .failure(openingFailure(error))
         }
-        sqlite3_busy_timeout(handle, 2000)
-        let columns = (rows(handle, "SELECT name FROM pragma_table_info('ZWAMEDIAITEM')") ?? []).compactMap { $0 }
+        let columns = ((try? store.rows("SELECT name FROM pragma_table_info('ZWAMEDIAITEM')")) ?? []).compactMap { $0[0].decodedString }
         guard columns.contains("ZMEDIALOCALPATH") else { return .failure(Reason("ChatStorage.sqlite is not the shape expected")) }
         var paths = Set<String>()
         for column in pathColumns where columns.contains(column) {
-            guard let values = rows(handle, "SELECT \(column) FROM ZWAMEDIAITEM WHERE \(column) IS NOT NULL") else {
+            guard let rows = try? store.rows("SELECT \(column) FROM ZWAMEDIAITEM WHERE \(column) IS NOT NULL") else {
                 return .failure(Reason("ChatStorage.sqlite could not be read (WhatsApp may have it locked)"))
             }
-            paths.formUnion(values.compactMap { $0 })
+            paths.formUnion(rows.compactMap { $0[0].decodedString })
         }
         return .success(paths)
     }
 
-    /// The first column of every row, or `nil` when the query fails.
-    private static func rows(_ handle: OpaquePointer?, _ sql: String) -> [String?]? {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else { return nil }
-        defer { sqlite3_finalize(statement) }
-        var values: [String?] = []
-        while true {
-            switch sqlite3_step(statement) {
-            case SQLITE_ROW: values.append(sqlite3_column_text(statement, 0).map { String(cString: $0) })
-            case SQLITE_DONE: return values
-            default: return nil
-            }
+    /// Why a store did not open: a file that opens but is no database reads
+    /// as the wrong shape, as SQLite's own lazy open once reported it;
+    /// anything else would not open.
+    private static func openingFailure(_ error: SQLiteReaderError) -> Reason {
+        if case .unreadable(_, let reason) = error,
+           ["not a database", "malformed", "file is encrypted"].contains(where: reason.lowercased().contains) {
+            return Reason("ChatStorage.sqlite is not the shape expected")
         }
+        return Reason("ChatStorage.sqlite would not open")
     }
 
     struct Reason: Error, Equatable {

@@ -13,11 +13,16 @@ let package = Package(
     products: [
         .library(name: "DiskCleanup", targets: ["DiskCleanup"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/arraypress/swift-sqlite-reader.git", from: "0.2.0"),
+    ],
     targets: [
         // The rule catalogue is compiled in (Support/CatalogueData.swift), not
         // a resource bundle: a Homebrew-symlinked binary cannot find
         // Bundle.module, and a cleaner that cannot find its rules must not run.
-        .target(name: "DiskCleanup"),
+        .target(name: "DiskCleanup", dependencies: [
+            .product(name: "SQLiteReader", package: "swift-sqlite-reader"),
+        ]),
         .testTarget(name: "DiskCleanupTests", dependencies: ["DiskCleanup"]),
     ]
 )
