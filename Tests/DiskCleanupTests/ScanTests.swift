@@ -145,3 +145,75 @@ struct ScanTests {
         }
     }
 }
+
+/// Core AI's compiled copies, told apart by whether their model is still on the disk.
+struct CompiledCopyTests {
+
+    static let live = String(repeating: "ab", count: 32)
+    static let linked = String(repeating: "cd", count: 32)
+    static let gone = String(repeating: "EF", count: 32)
+
+    func scan(_ fixture: Fixture) -> ScanReport {
+        Scanner.scan(catalogue: try! Catalogue.builtIn(), context: fixture.context(), options: ScanScope(categories: [.mlCaches]))
+    }
+
+    func hashFile(_ hex: String) -> Data {
+        Data(stride(from: 0, to: hex.count, by: 2).map { UInt8(hex.dropFirst($0).prefix(2), radix: 16)! })
+    }
+
+    @Test func aCopyWhoseModelIsGoneIsSafeAndALiveOneNamesItsModel() throws {
+        let fixture = try Fixture.make()
+        defer { fixture.remove() }
+        let cache = "Library/Caches/coreai-cache/\(Fixture.currentBuild)/imagine/"
+        // Core AI names copies in either case; models' hashes are matched in lower case.
+        for hash in [Self.live.uppercased(), Self.linked, Self.gone] { try fixture.file(cache + hash + "/main.bin", bytes: 20_000) }
+        // One model kept in an app's folder, one reached only through a link named *.aimodel
+        // to a Hugging Face–style blob — both still loadable.
+        try fixture.folder("Library/Application Support/imagine-x/Transformer.aimodel")
+        try hashFile(Self.live).write(to: URL(fileURLWithPath: fixture.path("Library/Application Support/imagine-x/Transformer.aimodel/main.hash")))
+        try fixture.folder("Elsewhere/blobs")
+        try hashFile(Self.linked).write(to: URL(fileURLWithPath: fixture.path("Elsewhere/blobs/hash-blob")))
+        try fixture.folder("Elsewhere/real/Encoder.aimodel")
+        try FileManager.default.createSymbolicLink(atPath: fixture.path("Elsewhere/real/Encoder.aimodel/main.hash"),
+                                                   withDestinationPath: fixture.path("Elsewhere/blobs/hash-blob"))
+        try fixture.folder("Library/Application Support/bundle")
+        try FileManager.default.createSymbolicLink(atPath: fixture.path("Library/Application Support/bundle/Encoder.aimodel"),
+                                                   withDestinationPath: fixture.path("Elsewhere/real/Encoder.aimodel"))
+        let report = scan(fixture)
+        let gone = try #require(report.items.first { $0.path == fixture.path(cache + Self.gone) })
+        #expect(gone.tier == .safe)
+        #expect(gone.evidence["model"] == "none on disk has this hash")
+        let live = try #require(report.items.first { $0.path == fixture.path(cache + Self.live.uppercased()) })
+        #expect(live.tier == .review)
+        #expect(live.evidence["model"]?.hasSuffix("imagine-x/Transformer.aimodel") == true)
+        let linked = try #require(report.items.first { $0.path == fixture.path(cache + Self.linked) })
+        #expect(linked.tier == .review, "a model reached only through a link still loads")
+    }
+
+    @Test func documentsAndDesktopAreNeverListed() throws {
+        let fixture = try Fixture.make()
+        let roots = ModelAssets.roots(fixture.context())
+        fixture.remove()
+        #expect(!roots.contains { $0.hasSuffix("/Documents") || $0.hasSuffix("/Desktop") }, "iCloud would download them")
+        #expect(roots.contains { $0.hasSuffix("/Library/Application Support") } && roots.contains { $0.hasSuffix("/.cache") })
+    }
+
+    @Test func modelsInsideBuildFoldersAndGitAreNotLookedFor() throws {
+        let fixture = try Fixture.make()
+        defer { fixture.remove() }
+        let cache = "Library/Caches/coreai-cache/\(Fixture.currentBuild)/tool/"
+        try fixture.file(cache + Self.live + "/main.bin")
+        try fixture.folder("Developer/app/.build/release/Model.aimodel")
+        try hashFile(Self.live).write(to: URL(fileURLWithPath: fixture.path("Developer/app/.build/release/Model.aimodel/main.hash")))
+        let item = try #require(scan(fixture).items.first { $0.path == fixture.path(cache + Self.live) })
+        #expect(item.tier == .safe, "a build folder's copy of a model is rebuilt with it, not kept")
+    }
+
+    @Test func hashNamesAreSixtyFourHexDigits() {
+        #expect(CompiledModelNames.isAssetHash(Self.live) && CompiledModelNames.isAssetHash(Self.gone))
+        #expect(!CompiledModelNames.isAssetHash("model.bin") && !CompiledModelNames.isAssetHash(String(Self.live.dropLast())))
+        #expect(!CompiledModelNames.isAssetHash(String(repeating: "g", count: 64)), "hex digits only")
+        #expect(CompiledModelNames.hash(Data([0xAB, 0x01])) == "ab01")
+        #expect(CompiledModelNames.hash(Data()) == nil)
+    }
+}

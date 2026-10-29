@@ -579,7 +579,7 @@ enum CatalogueData {
       "regenerable": true,
       "tier": "safe",
       "removal": "delete",
-      "note": "Models compiled for one macOS build. Another build's folder is dead after an update; this build's rebuilds itself but slowly, so it is review."
+      "note": "Models compiled for one macOS build. Another build's folder is dead after an update; this build's rebuilds itself but slowly, so it is review — except a compiled copy whose model is on the disk no more (no .aimodel has its hash), which nothing can load again."
     },
     {
       "id": "hf-hub",

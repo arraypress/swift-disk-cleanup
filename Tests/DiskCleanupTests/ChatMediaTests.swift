@@ -73,5 +73,8 @@ struct ChatMediaTests {
         #expect(store.evidence["unlistedMediaFiles"] == "6")
         #expect(store.evidence["listedMedia"] == "2")
         #expect(report.notes.contains { $0.hasPrefix("WhatsApp: 6 media file(s)") }, "\(report.notes)")
+        // Two of the rule's globs match this container (`group.net…` and `*.net…`): one item, one note.
+        #expect(report.items.filter { $0.path == fixture.path(ChatMediaTests.container) }.count == 1)
+        #expect(report.notes.filter { $0.hasPrefix("WhatsApp:") }.count == 1, "\(report.notes)")
     }
 }

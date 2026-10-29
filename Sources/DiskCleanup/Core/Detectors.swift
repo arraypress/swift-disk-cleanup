@@ -27,10 +27,13 @@ enum Detectors {
 
     static func paths(_ rule: Rule, context: CleanupContext) -> DetectorResult {
         var result = DetectorResult()
+        // A rule's globs can overlap (`group.net.whatsapp…` and `*.net.whatsapp…`): one candidate a path,
+        // or a detector's per-candidate note says the same thing twice.
+        var seen = Set<String>()
         for place in places(rule, context: context) {
             let expansion = PathProbe.expand(place)
             result.roots += expansion.roots
-            for path in expansion.paths {
+            for path in expansion.paths where seen.insert(path).inserted {
                 var candidate = Candidate(path: path)
                 let name = PathText.lastComponent(path)
                 if let pattern = rule.protect.first(where: { Glob.matches($0, name) }) {
@@ -205,6 +208,12 @@ enum Detectors {
     static func coreAIBuilds(_ rule: Rule, context: CleanupContext) -> DetectorResult {
         var result = DetectorResult()
         let current = context.osBuild
+        // The models on disk, found only once a compiled copy needs telling apart.
+        var assets: [String: String]?
+        let live = { () -> [String: String] in
+            if let assets { return assets }
+            let found = ModelAssets.hashes(under: ModelAssets.roots(context)); assets = found; return found
+        }
         for root in places(rule, context: context) {
             let listing = PathProbe.list(root)
             result.roots.append((root, listing.visibility))
@@ -212,7 +221,7 @@ enum Detectors {
                 let path = root + "/" + name
                 guard PathProbe.isDirectory(path) else { continue }
                 if OSBuild.isBuild(name) {
-                    result.candidates += buildFolder(path, build: name, current: current)
+                    result.candidates += buildFolder(path, build: name, current: current, live: live)
                 } else {
                     // `sync`, `tmp`: build folders one level down.
                     for inner in PathProbe.list(path).names where !inner.hasPrefix(".") {
@@ -231,15 +240,37 @@ enum Detectors {
     }
 
     /// A build's folder: whole and safe when it is not this Mac's build;
-    /// split per tool and review when it is.
-    private static func buildFolder(_ path: String, build: String, current: String?) -> [Candidate] {
+    /// split per tool when it is, and per compiled copy where the tool's folder
+    /// holds them by hash — safe when no model on disk has that hash (nothing can
+    /// load it again), review with its model named when one does.
+    private static func buildFolder(_ path: String, build: String, current: String?,
+                                    live: () -> [String: String]) -> [Candidate] {
         guard let current, build == current else {
             return [Candidate(path: path, evidence: ["build": build, "current": current ?? "unknown"],
                               tier: current == nil ? .review : nil)]
         }
-        return PathProbe.list(path).names.filter { !$0.hasPrefix(".") }.map { tool in
-            Candidate(path: path + "/" + tool, evidence: ["build": build, "current": current, "tool": tool], tier: .review)
+        var candidates: [Candidate] = []
+        for tool in PathProbe.list(path).names where !tool.hasPrefix(".") {
+            let toolPath = path + "/" + tool
+            let evidence = ["build": build, "current": current, "tool": tool]
+            let entries = PathProbe.list(toolPath).names.filter { !$0.hasPrefix(".") }
+            guard PathProbe.isDirectory(toolPath), entries.contains(where: CompiledModelNames.isAssetHash) else {
+                candidates.append(Candidate(path: toolPath, evidence: evidence, tier: .review))
+                continue
+            }
+            let models = live()
+            for entry in entries {
+                var detail = evidence
+                if CompiledModelNames.isAssetHash(entry), models[entry.lowercased()] == nil {
+                    detail["model"] = "none on disk has this hash"
+                    candidates.append(Candidate(path: toolPath + "/" + entry, evidence: detail))
+                } else {
+                    detail["model"] = models[entry.lowercased()] ?? "not a compiled copy"
+                    candidates.append(Candidate(path: toolPath + "/" + entry, evidence: detail, tier: .review))
+                }
+            }
         }
+        return candidates
     }
 
     static func huggingFaceRepos(_ rule: Rule, context: CleanupContext) -> DetectorResult {
