@@ -100,6 +100,47 @@ enum UninstallMatch {
         return tokens.first { name.contains($0) }
     }
 
+    /// Which of `bundleIDs` a file or folder is named by: the id itself or
+    /// the id and a dot (`com.foo.app.helper`, `com.foo.app.plist`,
+    /// `com.foo.app.startuphelper.sfl4`), with a leading team id or `group.`
+    /// ignored. The most specific id wins, so a name that belongs to another
+    /// installed app sharing the prefix (`com.foo.app.pro`) is not ours.
+    static func namedBy(_ name: String, bundleIDs: [String], others: [String] = []) -> String? {
+        let base = BundleIDs.groupBase(name).lowercased()
+        func owns(_ id: String) -> Bool { base == id || base.hasPrefix(id + ".") }
+        guard let ours = bundleIDs.map({ $0.lowercased() }).filter(owns).max(by: { $0.count < $1.count }) else { return nil }
+        let theirs = others.map { $0.lowercased() }.filter { owns($0) && $0.count > ours.count }
+        return theirs.isEmpty ? ours : nil
+    }
+
+    /// The crash report kinds macOS writes per process.
+    static let crashExtensions: Set<String> = ["ips", "crash", "diag", "spin", "hang"]
+
+    /// The app name a crash file is for: `Spotify-2026-11-01-101010.ips`,
+    /// `Spotify Helper (Renderer)-….ips` in DiagnosticReports, and
+    /// `Spotify_<uuid>.plist` in Application Support/CrashReporter. Names
+    /// shorter than three letters never match.
+    static func crashReport(_ file: String, names: [String]) -> String? {
+        let lowered = file.lowercased()
+        guard let dot = lowered.lastIndex(of: ".") else { return nil }
+        let ext = String(lowered[lowered.index(after: dot)...])
+        let isPlist = ext == "plist"
+        guard isPlist || crashExtensions.contains(ext) else { return nil }
+        return names.first { name in
+            let name = name.lowercased()
+            guard name.count >= 3 else { return false }
+            if isPlist { return lowered.hasPrefix(name + "_") }
+            return lowered.hasPrefix(name + "-") || lowered.hasPrefix(name + "_") || lowered.hasPrefix(name + " helper")
+        }
+    }
+
+    /// The program a browser's native messaging host manifest runs: its `path`.
+    static func nativeHostProgram(_ data: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let path = object["path"] as? String, path.hasPrefix("/") else { return nil }
+        return path
+    }
+
     /// A folder that is one product whole: an app, a plug-in, a framework.
     static func isBundle(_ name: String) -> Bool {
         let bundles: Set<String> = ["app", "component", "vst", "vst3", "clap", "aaxplugin", "bundle", "plugin", "framework",

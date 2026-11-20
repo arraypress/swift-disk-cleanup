@@ -12,12 +12,19 @@
 //     id's prefix or the vendor's (`com.apple` is never a vendor);
 //  2. exact: what a receipt owns (the deepest paths it owns whole, never a
 //     shared parent like Library/Application Support/Avid), the app, the
-//     ~/Library places named by its bundle id, its launch jobs and helpers,
-//     and its icon in the Dock (kept or recent), by bundle id or app path;
-//  3. likely: group containers of its team or vendor, and audio plug-ins
-//     whose bundle id has the vendor's prefix;
+//     ~/Library places named by its bundle id (or the id and a dot: its
+//     helpers' too), its Application Scripts, background downloads and
+//     recent-documents list, the browser connectors that run it, its launch
+//     jobs and helpers, and its icon in the Dock (kept or recent);
+//  3. likely: group containers of its team or vendor, audio plug-ins whose
+//     bundle id has the vendor's prefix, folders named by its bundle id one
+//     level inside another folder in Application Support or Caches (an SDK's
+//     per-app data, like io.branch), and its crash reports;
 //  4. review: folders and dotfiles whose name holds its name or the
 //     vendor's, and anything another installed app also uses.
+//
+//  A name another installed app's bundle id claims more specifically
+//  (com.foo.app.pro while removing com.foo.app) is never taken.
 //
 //  An app a catalogue rule ties to a library outside the home folder
 //  (GarageBand, Logic Pro and MainStage to their sound library) brings that
@@ -134,6 +141,8 @@ public enum Uninstaller {
         /// The app's icons in the Dock.
         var dock: [DockEdit.Tile] = []
         var notes: [String] = []
+        /// Bundle ids of installed apps that are staying, read once per collect.
+        var otherIDs: [String] = []
 
         init(context: CleanupContext, catalogue: Catalogue) {
             self.context = context
@@ -144,6 +153,12 @@ public enum Uninstaller {
         var root: String { context.root.path == "/" ? "" : context.root.path }
         var bundleIDs: [String] { identity.bundleIDs.map { $0.lowercased() } }
         var tokens: [String] { UninstallMatch.tokens(names: identity.names, vendor: identity.vendor) }
+
+        /// Which of the app's bundle ids `name` is named by, unless a staying
+        /// app's id claims it more specifically.
+        func ownID(_ name: String) -> String? {
+            UninstallMatch.namedBy(name, bundleIDs: bundleIDs, others: otherIDs)
+        }
 
         /// Installed apps that are not being uninstalled.
         var others: [InstalledApp] {
@@ -260,6 +275,7 @@ public enum Uninstaller {
         // MARK: 2–4. What
 
         mutating func collect() {
+            otherIDs = others.map(\.bundleID)
             for receipt in receipts { collectReceipt(receipt) }
             for app in identity.apps { add(app, .exact, "the app (\(identity.bundleIDs.joined(separator: ", ")))") }
             // An app a receipt owns says who it is, even when only a package id was typed.
@@ -270,6 +286,7 @@ public enum Uninstaller {
                 }
             }
             collectLibrary()
+            collectElsewhere()
             collectAppLibraries()
             collectLaunchJobs()
             collectHelpers()
@@ -320,20 +337,97 @@ public enum Uninstaller {
             for name in PathProbe.list(library + "/Containers").names {
                 let path = library + "/Containers/" + name
                 let owner = (PathProbe.read(path + "/.com.apple.containermanagerd.metadata.plist").flatMap(PlistValues.containerOwner) ?? name).lowercased()
-                if let id = bundleIDs.first(where: { owner == $0 || owner.hasPrefix($0 + ".") }) {
+                if let id = ownID(owner) {
                     add(path, .exact, "container of \(id)")
                 }
             }
-            let named: [(String, (String, String) -> Bool)] = [
-                ("Caches", { $0 == $1 }), ("HTTPStorages", { $0 == $1 || $0 == $1 + ".binarycookies" }),
-                ("WebKit", { $0 == $1 }), ("Logs", { $0 == $1 }), ("Application Support", { $0 == $1 }),
-                ("Saved Application State", { $0 == $1 + ".savedstate" }), ("Preferences", { $0 == $1 + ".plist" }),
-                ("Preferences/ByHost", { $0.hasPrefix($1 + ".") && $0.hasSuffix(".plist") }),
-            ]
-            for (folder, matches) in named {
+            // The id itself or the id and a dot: `com.foo.app.helper` in Caches,
+            // `com.foo.app.plist`, `com.foo.app.savedstate`, ByHost's `com.foo.app.<host>.plist`.
+            let named = ["Caches", "HTTPStorages", "WebKit", "Logs", "Application Support", "Saved Application State",
+                         "Preferences", "Preferences/ByHost"]
+            for folder in named {
                 for name in PathProbe.list(library + "/" + folder).names {
-                    if let id = bundleIDs.first(where: { matches(name.lowercased(), $0) }) {
+                    if let id = ownID(name) {
                         add(library + "/" + folder + "/" + name, .exact, "named by bundle id \(id)")
+                    }
+                }
+            }
+        }
+
+        /// The places macOS, browsers and bundled SDKs name by the app's
+        /// bundle id or its name, outside the folders `collectLibrary` reads.
+        mutating func collectElsewhere() {
+            let library = home + "/Library"
+            // Stubs for its extensions and scripts, downloads nsurlsessiond
+            // ran for it, and the list of its recent documents.
+            let byID = [("Application Scripts", "script folder"),
+                        ("Caches/com.apple.nsurlsessiond/Downloads", "background downloads"),
+                        ("Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments",
+                         "recent documents list")]
+            for (folder, what) in byID {
+                for name in PathProbe.list(library + "/" + folder).names {
+                    if let id = ownID(name) { add(library + "/" + folder + "/" + name, .exact, "\(what) of \(id)") }
+                }
+            }
+            // One level inside another folder: an SDK's per-app data
+            // (Application Support/io.branch/<id>), likely rather than exact
+            // because the folder around it is someone else's.
+            for parent in ["Application Support", "Caches"] {
+                for holder in PathProbe.list(library + "/" + parent).names where ownID(holder) == nil {
+                    let folder = library + "/" + parent + "/" + holder
+                    guard PathProbe.isDirectory(folder) else { continue }
+                    for name in PathProbe.list(folder).names {
+                        if let id = ownID(name) { add(folder + "/" + name, .likely, "named by bundle id \(id) inside \(parent)/\(holder)") }
+                    }
+                }
+            }
+            collectCrashReports(library)
+            collectNativeHosts(library)
+        }
+
+        /// Crash, hang and spin reports by the app's name. Not for a gone app
+        /// typed as a bundle id: its name is only guessed from the id.
+        mutating func collectCrashReports(_ library: String) {
+            if identity.apps.isEmpty && BundleIDs.looksLikeBundleID(identity.input) { return }
+            let names = identity.names
+            for folder in ["Logs/DiagnosticReports", "Logs/DiagnosticReports/Retired", "Application Support/CrashReporter"] {
+                for file in PathProbe.list(library + "/" + folder).names {
+                    if let name = UninstallMatch.crashReport(file, names: names) {
+                        add(library + "/" + folder + "/" + file, .likely, "crash report of \(name)")
+                    }
+                }
+            }
+        }
+
+        /// Browser native messaging hosts (`NativeMessagingHosts/*.json`, in
+        /// Chrome, Edge, Brave, Arc, Firefox and the rest, found one or two
+        /// folders down rather than from a list of browsers): exact when the
+        /// manifest runs a program inside the app or is named by its bundle
+        /// id, likely or review by the vendor's prefix.
+        mutating func collectNativeHosts(_ library: String) {
+            var folders: [String] = []
+            for base in [library + "/Application Support", root + "/Library/Application Support", root + "/Library/Google",
+                         root + "/Library/Microsoft"] {
+                for first in PathProbe.list(base).names {
+                    let one = base + "/" + first
+                    guard PathProbe.isDirectory(one) else { continue }
+                    if first == "NativeMessagingHosts" { folders.append(one); continue }
+                    for second in PathProbe.list(one).names where second == "NativeMessagingHosts" || PathProbe.isDirectory(one + "/" + second + "/NativeMessagingHosts") {
+                        folders.append(second == "NativeMessagingHosts" ? one + "/" + second : one + "/" + second + "/NativeMessagingHosts")
+                    }
+                }
+            }
+            for folder in folders {
+                for name in PathProbe.list(folder).names where name.lowercased().hasSuffix(".json") {
+                    let path = folder + "/" + name
+                    let stem = String(name.dropLast(5))
+                    let program = PathProbe.read(path, limit: 1 << 16).flatMap(UninstallMatch.nativeHostProgram)
+                    if let program, let app = identity.apps.first(where: { PathText.isWithin(program, $0) || PathText.isWithin(root + program, $0) }) {
+                        add(path, .exact, "browser connector runs \(PathText.lastComponent(app))")
+                    } else if let id = ownID(stem) {
+                        add(path, .exact, "browser connector named by bundle id \(id)")
+                    } else if let vendor = identity.vendor, stem.lowercased().hasPrefix(vendor + ".") {
+                        add(path, shared(vendor) == nil ? .likely : .review, "browser connector has the vendor prefix", sharedNote(vendor))
                     }
                 }
             }
@@ -382,7 +476,7 @@ public enum Uninstaller {
                     let extra = ["launchLabel": label, "launchDomain": domain]
                     if let program = job.program, owned.contains(where: { PathText.isWithin(root + program, $0) || PathText.isWithin(program, $0) }) {
                         add(path, .exact, "launch job runs \(program)", extra)
-                    } else if let id = bundleIDs.first(where: { lowered == $0 || lowered.hasPrefix($0 + ".") }) {
+                    } else if let id = ownID(lowered) {
                         add(path, .exact, "launch job label \(label) is \(id)'s", extra)
                     } else if let vendor = identity.vendor, lowered.hasPrefix(vendor + ".") {
                         add(path, shared(vendor) == nil ? .likely : .review, "launch job label \(label) has the vendor prefix",
@@ -397,7 +491,7 @@ public enum Uninstaller {
             let folder = root + "/Library/PrivilegedHelperTools"
             for name in PathProbe.list(folder).names {
                 let lowered = name.lowercased()
-                if let id = bundleIDs.first(where: { lowered == $0 || lowered.hasPrefix($0 + ".") }) {
+                if let id = ownID(lowered) {
                     add(folder + "/" + name, .exact, "helper named by bundle id \(id)")
                 } else if let vendor = identity.vendor, lowered.hasPrefix(vendor + ".") {
                     add(folder + "/" + name, shared(vendor) == nil ? .likely : .review, "helper has the vendor prefix", sharedNote(vendor))
@@ -412,7 +506,7 @@ public enum Uninstaller {
             for name in PathProbe.list(folder).names {
                 let base = BundleIDs.groupBase(name).lowercased()
                 let path = folder + "/" + name
-                if let id = bundleIDs.first(where: { base == $0 || base.hasPrefix($0 + ".") }) {
+                if let id = ownID(base) {
                     add(path, .exact, "group container of \(id)")
                 } else if let team = identity.teamIDs.first(where: { name.hasPrefix($0 + ".") }) {
                     let vendor = BundleIDs.vendor(base)
@@ -435,7 +529,7 @@ public enum Uninstaller {
                 for name in PathProbe.list(folder).names where UninstallMatch.isBundle(name) {
                     let path = folder + "/" + name
                     guard let data = PathProbe.read(path + "/Contents/Info.plist"), let id = PlistValues.bundleInfo(data)?.bundleID.lowercased() else { continue }
-                    if bundleIDs.contains(where: { id == $0 || id.hasPrefix($0 + ".") }) {
+                    if ownID(id) != nil {
                         add(path, .exact, "plug-in bundle id \(id)")
                     } else if let vendor = identity.vendor, id.hasPrefix(vendor + ".") {
                         add(path, shared(vendor) == nil ? .likely : .review, "plug-in bundle id \(id) has the vendor prefix", sharedNote(vendor))

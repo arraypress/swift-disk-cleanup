@@ -123,6 +123,83 @@ struct UninstallTests {
         #expect(fixture.exists("Library/Group Containers/ABCDE12345.dev.mosaic.shared/x"))
     }
 
+    /// What a real uninstall (Spotify, 1Password) left behind before: the
+    /// places macOS, browsers and SDKs name by bundle id or app name.
+    @Test func findsWhatMacOSBrowsersAndSDKsKeepForIt() throws {
+        let fixture = try Fixture.make()
+        defer { fixture.remove() }
+        try app("Mosaic", id: "dev.mosaic.app", in: fixture)
+        try app("Mosaic Pro", id: "dev.mosaic.app.pro", in: fixture)   // stays: shares the prefix
+        try fixture.file("Library/Caches/dev.mosaic.app.helper/blob")
+        try fixture.file("Library/Caches/dev.mosaic.app.pro/blob")
+        try fixture.file("Library/Preferences/dev.mosaic.app.helper.plist")
+        try fixture.file("Library/Application Scripts/dev.mosaic.app/x")
+        try fixture.file("Library/Application Scripts/ABCDE12345.dev.mosaic.app.share/x")
+        try fixture.file("Library/Caches/com.apple.nsurlsessiond/Downloads/dev.mosaic.app/x")
+        let recents = "Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/"
+        try fixture.file(recents + "dev.mosaic.app.startuphelper.sfl4")
+        try fixture.file(recents + "dev.mosaic.app.pro.sfl4")
+        try fixture.file("Library/Application Support/io.branch/dev.mosaic.app/x")
+        try fixture.file("Library/Application Support/io.branch/dev.someone.else/x")
+        try fixture.file("Library/Application Support/CrashReporter/Mosaic_1A2B.plist")
+        try fixture.file("Library/Logs/DiagnosticReports/Mosaic-2026-11-01-101010.ips")
+        try fixture.file("Library/Logs/DiagnosticReports/Mosaic Helper (Renderer)-2026-11-01-101010.ips")
+        try fixture.file("Library/Logs/DiagnosticReports/Mosaic Pro-2026-11-01-101010.ips")
+        try fixture.file("Library/Logs/DiagnosticReports/Mosaicker-2026-11-01-101010.ips")
+        let bridge = #"{"name": "dev.mosaic.bridge", "path": "\#(fixture.path("Applications/Mosaic.app/Contents/MacOS/bridge"))"}"#
+        try fixture.file("Library/Application Support/Google/Chrome/NativeMessagingHosts/dev.mosaic.bridge.json", contents: bridge)
+        try fixture.file("Library/Application Support/Mozilla/NativeMessagingHosts/dev.mosaic.app.json", contents: #"{"path": "/opt/x"}"#)
+        try fixture.file("Library/Application Support/Mozilla/NativeMessagingHosts/org.other.host.json", contents: #"{"path": "/opt/y"}"#)
+
+        let plan = try plan("Mosaic", fixture, records: FixtureRecords())
+        #expect(plan.identity.bundleIDs == ["dev.mosaic.app"])
+        #expect(match(plan, "Library/Caches/dev.mosaic.app.helper", in: fixture) == "exact")
+        #expect(match(plan, "Library/Preferences/dev.mosaic.app.helper.plist", in: fixture) == "exact")
+        #expect(match(plan, "Library/Application Scripts/dev.mosaic.app", in: fixture) == "exact")
+        #expect(match(plan, "Library/Application Scripts/ABCDE12345.dev.mosaic.app.share", in: fixture) == "exact")
+        #expect(match(plan, "Library/Caches/com.apple.nsurlsessiond/Downloads/dev.mosaic.app", in: fixture) == "exact")
+        #expect(match(plan, recents + "dev.mosaic.app.startuphelper.sfl4", in: fixture) == "exact")
+        #expect(match(plan, "Library/Application Support/io.branch/dev.mosaic.app", in: fixture) == "likely")
+        #expect(match(plan, "Library/Application Support/CrashReporter/Mosaic_1A2B.plist", in: fixture) == "likely")
+        #expect(match(plan, "Library/Logs/DiagnosticReports/Mosaic-2026-11-01-101010.ips", in: fixture) == "likely")
+        #expect(match(plan, "Library/Logs/DiagnosticReports/Mosaic Helper (Renderer)-2026-11-01-101010.ips", in: fixture) == "likely")
+        #expect(match(plan, "Library/Application Support/Google/Chrome/NativeMessagingHosts/dev.mosaic.bridge.json", in: fixture) == "exact")
+        #expect(match(plan, "Library/Application Support/Mozilla/NativeMessagingHosts/dev.mosaic.app.json", in: fixture) == "exact")
+        // Mosaic Pro's, someone else's, and a longer name that only starts the same.
+        #expect(match(plan, "Library/Caches/dev.mosaic.app.pro", in: fixture) == nil)
+        #expect(match(plan, recents + "dev.mosaic.app.pro.sfl4", in: fixture) == nil)
+        #expect(match(plan, "Library/Application Support/io.branch/dev.someone.else", in: fixture) == nil)
+        #expect(match(plan, "Library/Logs/DiagnosticReports/Mosaic Pro-2026-11-01-101010.ips", in: fixture) == nil)
+        #expect(match(plan, "Library/Logs/DiagnosticReports/Mosaicker-2026-11-01-101010.ips", in: fixture) == nil)
+        #expect(match(plan, "Library/Application Support/Mozilla/NativeMessagingHosts/org.other.host.json", in: fixture) == nil)
+        #expect(plan.items.allSatisfy { $0.protected == nil }, "\(plan.items.map { ($0.path, $0.protected) })")
+
+        let taking = Uninstaller.select(plan, ids: [], includeReview: false).take
+        #expect(!taking.contains { $0.path.contains("dev.mosaic.app.pro") || $0.path.contains("Mosaic Pro") })
+    }
+
+    @Test func recentDocumentsAreNotMistakenForSSH() throws {
+        let catalogue = try Catalogue.builtIn()
+        let home = "/Users/someone"
+        let recents = home + "/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments"
+        #expect(PathSafety.reason(for: recents + "/com.foo.app.sfl4", catalogue: catalogue, home: home) == nil)
+        #expect(PathSafety.reason(for: recents + "/com.foo.ssh.sfl4", catalogue: catalogue, home: home) != nil)
+        #expect(PathSafety.reason(for: home + "/.ssh/id_ed25519", catalogue: catalogue, home: home) != nil)
+        #expect(PathSafety.reason(for: home + "/Library/Caches/LSSharedFileList-ssh", catalogue: catalogue, home: home) != nil)
+    }
+
+    @Test func namedByPrefersTheMostSpecificInstalledID() {
+        #expect(UninstallMatch.namedBy("com.foo.app.plist", bundleIDs: ["com.foo.app"]) == "com.foo.app")
+        #expect(UninstallMatch.namedBy("ABCDE12345.com.foo.app.share", bundleIDs: ["com.foo.app"]) == "com.foo.app")
+        #expect(UninstallMatch.namedBy("com.foo.application", bundleIDs: ["com.foo.app"]) == nil)
+        #expect(UninstallMatch.namedBy("com.foo.app.pro.plist", bundleIDs: ["com.foo.app"], others: ["com.foo.app.pro"]) == nil)
+        #expect(UninstallMatch.namedBy("com.foo.app.plist", bundleIDs: ["com.foo.app"], others: ["com.foo.app.pro"]) == "com.foo.app")
+        #expect(UninstallMatch.crashReport("Arc-2026-01-01.ips", names: ["Arc"]) == "Arc")
+        #expect(UninstallMatch.crashReport("Arc-2026-01-01.txt", names: ["Arc"]) == nil)
+        #expect(UninstallMatch.crashReport("Archive-2026.ips", names: ["Arc"]) == nil)
+        #expect(UninstallMatch.crashReport("Go-1.ips", names: ["Go"]) == nil)
+    }
+
     // MARK: A gone app, found by its receipts
 
     static func valhalla(_ fixture: Fixture) throws -> FixtureRecords {

@@ -22,6 +22,17 @@ enum PathSafety {
         "/Library/Security", "/Library/SystemExtensions", "/Library/StagedExtensions", "/cores",
     ]
 
+    /// Words that hold a protected name only by accident: macOS's
+    /// `LSSharedFileList` (recent documents) spells "ssh". Each is taken out
+    /// of a name before the protected names are looked for, so a real `.ssh`
+    /// next to one is still found. Exact words only — never a pattern.
+    static let falseFriends = ["lssharedfilelist"]
+
+    /// A name, lower-cased, with its false friends taken out.
+    static func withoutFalseFriends(_ component: String) -> String {
+        falseFriends.reduce(component.lowercased()) { $0.replacingOccurrences(of: $1, with: "/") }
+    }
+
     /// Why `path` must never be removed, or `nil` when it may be.
     ///
     /// - Parameter allowing: Protected places (catalogue entries, or system
@@ -48,7 +59,7 @@ enum PathSafety {
                 return "protected (\(entry))"
             }
         }
-        let lowered = PathText.components(path).map { $0.lowercased() }
+        let lowered = PathText.components(path).map(withoutFalseFriends)
         for fragment in catalogue.protectNames {
             let fragment = fragment.lowercased()
             if lowered.contains(where: { $0.contains(fragment) }) {
