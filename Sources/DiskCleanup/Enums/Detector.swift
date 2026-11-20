@@ -19,6 +19,12 @@ public enum Detector: String, Codable, CaseIterable, Sendable {
     case installers
     /// Device support folders: everything but the newest build per device model.
     case deviceSupport = "device-support"
+    /// Folders named a product and a version (`chromium-1248`): all but the
+    /// newest per product (`keepNewest`, default one).
+    case superseded
+    /// Playwright's browsers: superseded, except that a build an install on
+    /// the disk still needs (its `.links` register) is review, not safe.
+    case playwrightBrowsers = "playwright-browsers"
     /// Simulator devices, by `simctl list devices`.
     case simulatorDevices = "simulator-devices"
     /// Simulator runtimes, by `simctl runtime list`.

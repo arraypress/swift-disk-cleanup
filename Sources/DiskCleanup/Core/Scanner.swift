@@ -54,6 +54,8 @@ public enum Scanner {
                 result.candidates = markerResults?[rule.id] ?? []
             case .installers: result = Detectors.installers(rule, context: context, options: options, shared: shared, progress: progress)
             case .deviceSupport: result = Detectors.deviceSupport(rule, context: context)
+            case .superseded: result = Detectors.superseded(rule, context: context)
+            case .playwrightBrowsers: result = Detectors.playwrightBrowsers(rule, context: context)
             case .simulatorDevices: result = Detectors.simulatorDevices(rule, context: context)
             case .simulatorRuntimes: result = Detectors.simulatorRuntimes(rule, context: context)
             case .coreAIBuilds: result = Detectors.coreAIBuilds(rule, context: context)

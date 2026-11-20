@@ -477,6 +477,42 @@ enum CatalogueData {
       "note": "npm asks for --force because its cache heals itself; the cost is downloading again."
     },
     {
+      "id": "playwright-browsers",
+      "category": "package-caches",
+      "detector": "playwright-browsers",
+      "globs": ["~/Library/Caches/ms-playwright/*"],
+      "owner": "Playwright",
+      "regenerable": true,
+      "tier": "safe",
+      "removal": "delete",
+      "keepNewest": 1,
+      "note": "Browsers Playwright downloaded, one folder per build. The newest of each is kept. An older build no install on the disk needs (Playwright's own .links register) is safe; one a project still pins is review and says which; it downloads again with `npx playwright install` if taken."
+    },
+    {
+      "id": "puppeteer-browsers",
+      "category": "package-caches",
+      "detector": "superseded",
+      "globs": ["~/.cache/puppeteer/*/*"],
+      "owner": "Puppeteer",
+      "regenerable": true,
+      "tier": "safe",
+      "removal": "delete",
+      "keepNewest": 1,
+      "note": "Chrome builds Puppeteer downloaded, one folder per version. The newest of each is kept; an older Puppeteer downloads its own again."
+    },
+    {
+      "id": "jetbrains-old-caches",
+      "category": "user-caches",
+      "detector": "superseded",
+      "globs": ["~/Library/Caches/JetBrains/*"],
+      "owner": "JetBrains IDEs",
+      "regenerable": true,
+      "tier": "review",
+      "removal": "delete",
+      "keepNewest": 1,
+      "note": "Indexes and caches per IDE version (IntelliJIdea2025.1). Each IDE's newest is kept. Review, because people keep two versions installed and re-indexing a large project is slow; the IDEs also clear folders of versions unused for months themselves."
+    },
+    {
       "id": "pnpm-store",
       "category": "package-caches",
       "paths": ["~/Library/pnpm/store"],

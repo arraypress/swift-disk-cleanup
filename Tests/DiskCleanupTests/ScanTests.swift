@@ -43,6 +43,36 @@ struct ScanTests {
         #expect(item(lifted, "Developer/swift-recent/.build", in: fixture)?.protected == nil)
     }
 
+    @Test func onlyTheNewestPlaywrightBrowsersStay() throws {
+        let fixture = try Fixture.make()
+        defer { fixture.remove() }
+        let browsers = "Library/Caches/ms-playwright/"
+        for name in ["chromium-1243", "chromium-1248", "ffmpeg-1011", "ffmpeg-1013", "webkit-2370"] {
+            try fixture.file(browsers + name + "/bin", bytes: 10_000)
+            try fixture.age(browsers + name, days: 10)
+        }
+        // Playwright's register: one install still pins chromium 1243; one link is to a deleted project.
+        let pinned = "Developer/old-site/node_modules/playwright-core"
+        try fixture.file(pinned + "/browsers.json", contents: #"{"browsers": [{"name": "chromium", "revision": "1243"}, {"name": "ffmpeg", "revision": "1013"}]}"#)
+        try fixture.file(browsers + ".links/a1", contents: fixture.path(pinned) + "\n")
+        try fixture.file(browsers + ".links/b2", contents: fixture.path("Developer/gone/node_modules/playwright-core"))
+        let report = try scan(fixture, [.packageCaches, .userCaches])
+        let unused = try #require(item(report, browsers + "ffmpeg-1011", in: fixture))
+        #expect(unused.rule == "playwright-browsers" && unused.tier == .safe && unused.protected == nil)
+        let stillPinned = try #require(item(report, browsers + "chromium-1243", in: fixture))
+        #expect(stillPinned.tier == .review && stillPinned.protected == nil)
+        #expect(stillPinned.evidence["usedBy"] == fixture.path("Developer/old-site/node_modules"))
+        for kept in ["chromium-1248", "ffmpeg-1013", "webkit-2370"] {
+            #expect(item(report, browsers + kept, in: fixture)?.protected?.contains("newest") == true)
+        }
+        // The broad caches sweep no longer offers the whole folder.
+        #expect(item(report, "Library/Caches/ms-playwright", in: fixture) == nil)
+        // No register to read: nothing older is called unused.
+        try FileManager.default.removeItem(atPath: fixture.path(browsers + ".links"))
+        let blind = try scan(fixture, [.packageCaches])
+        #expect(item(blind, browsers + "ffmpeg-1011", in: fixture)?.tier == .review)
+    }
+
     @Test func gitTrackedBuildFoldersAreProtected() throws {
         let fixture = try Fixture.make()
         defer { fixture.remove() }

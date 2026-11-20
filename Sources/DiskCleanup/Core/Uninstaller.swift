@@ -17,11 +17,12 @@
 //     recent-documents list, the browser connectors that run it, its launch
 //     jobs and helpers, and its icon in the Dock (kept or recent);
 //  3. likely: group containers of its team or vendor, audio plug-ins whose
-//     bundle id has the vendor's prefix, folders named by its bundle id one
-//     level inside another folder in Application Support or Caches (an SDK's
-//     per-app data, like io.branch), and its crash reports;
+//     bundle id has the vendor's prefix, a known SDK's folder for it
+//     (io.branch/<id>), and its crash reports;
 //  4. review: folders and dotfiles whose name holds its name or the
-//     vendor's, and anything another installed app also uses.
+//     vendor's, a folder named by its bundle id inside someone else's in
+//     Application Support or Caches, and anything another installed app
+//     also uses.
 //
 //  A name another installed app's bundle id claims more specifically
 //  (com.foo.app.pro while removing com.foo.app) is never taken.
@@ -369,15 +370,20 @@ public enum Uninstaller {
                     if let id = ownID(name) { add(library + "/" + folder + "/" + name, .exact, "\(what) of \(id)") }
                 }
             }
-            // One level inside another folder: an SDK's per-app data
-            // (Application Support/io.branch/<id>), likely rather than exact
-            // because the folder around it is someone else's.
+            // One level inside another folder. A known SDK's per-app data
+            // (io.branch/<id>) is likely; anywhere else it is review, since
+            // the folder around it is someone else's — a backup tool or a
+            // launcher may keep a person's copy of the app's data there.
             for parent in ["Application Support", "Caches"] {
                 for holder in PathProbe.list(library + "/" + parent).names where ownID(holder) == nil {
                     let folder = library + "/" + parent + "/" + holder
                     guard PathProbe.isDirectory(folder) else { continue }
+                    let sdk = UninstallMatch.sdkHolders.contains(holder.lowercased())
                     for name in PathProbe.list(folder).names {
-                        if let id = ownID(name) { add(folder + "/" + name, .likely, "named by bundle id \(id) inside \(parent)/\(holder)") }
+                        if let id = ownID(name) {
+                            add(folder + "/" + name, sdk ? .likely : .review,
+                                sdk ? "\(holder) SDK data of \(id)" : "named by bundle id \(id) inside \(parent)/\(holder)")
+                        }
                     }
                 }
             }

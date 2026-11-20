@@ -50,6 +50,20 @@ struct SupportTests {
     @Test func deviceSupportKeepsTheNewestVersion() {
         let names = ["17.0 (21A329)", "iPhone17,1 18.1 (22B83)", "iPhone16,2 18.1 (22B83)", "16.4", "Unknown"]
         let kept = DeviceSupportNames.kept(names, keep: 1)
+        // Superseded versions: one product, its newest kept.
+        let browsers = ["chromium-1243", "chromium-1248", "chromium_headless_shell-1243", "chromium_headless_shell-1248",
+                        "ffmpeg-1011", "ffmpeg-1013", "firefox-1555", "webkit-2370", ".links"]
+        #expect(VersionedNames.superseded(browsers, keep: 1) == ["chromium-1243", "chromium_headless_shell-1243", "ffmpeg-1011"])
+        #expect(VersionedNames.split("chromium_headless_shell-1248")! == ("chromium_headless_shell", "1248"))
+        #expect(VersionedNames.split("IntelliJIdea2025.1")! == ("IntelliJIdea", "2025.1"))
+        #expect(VersionedNames.split("mac_arm-131.0.6778.85")! == ("mac_arm", "131.0.6778.85"))
+        #expect(VersionedNames.split(".links") == nil && VersionedNames.split("1248") == nil)
+        #expect(VersionedNames.superseded(["PyCharm2024.3", "PyCharm2025.1", "WebStorm2024.3", "Toolbox"], keep: 1) == ["PyCharm2024.3"])
+        #expect(VersionedNames.superseded(["mac_arm-9.0.1", "mac_arm-10.0.0"], keep: 1) == ["mac_arm-9.0.1"])
+        let needs = #"{"browsers": [{"name": "chromium-headless-shell", "revision": "1248", "revisionOverrides": {"mac12": "1220"}}, {"name": "webkit", "revision": 2370}]}"#
+        #expect(PlaywrightLinks.folders(Data(needs.utf8)) == ["chromium_headless_shell-1248", "chromium_headless_shell-1220", "webkit-2370"])
+        #expect(PlaywrightLinks.install(Data("/a/node_modules/playwright-core\n".utf8)) == "/a/node_modules/playwright-core")
+        #expect(PlaywrightLinks.install(Data("relative/path".utf8)) == nil)
         #expect(kept == ["iPhone17,1 18.1 (22B83)", "iPhone16,2 18.1 (22B83)", "Unknown"])
         #expect(DeviceSupportNames.version("iPhone17,1 18.1 (22B83)")?.version == "18.1")
         #expect(DeviceSupportNames.version("18.1 (22B83)")?.build == "22B83")

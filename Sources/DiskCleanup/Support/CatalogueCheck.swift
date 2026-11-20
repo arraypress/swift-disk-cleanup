@@ -36,7 +36,9 @@ enum CatalogueCheck {
                     problems.append("\(label): \(place) is not absolute or ~/")
                 }
             }
-            if rule.keepNewest != nil && rule.detector != .deviceSupport { problems.append("\(label): keepNewest is for device support") }
+            if rule.keepNewest != nil && ![.deviceSupport, .superseded, .playwrightBrowsers].contains(rule.detector) {
+                problems.append("\(label): keepNewest is for device support and superseded versions")
+            }
             if (rule.detector == .appLibraries) == rule.apps.isEmpty { problems.append("\(label): apps go with, and only with, the app-libraries detector") }
             if case .command(let arguments) = rule.removal {
                 if arguments.isEmpty { problems.append("\(label): empty command") }

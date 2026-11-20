@@ -141,6 +141,7 @@ struct UninstallTests {
         try fixture.file(recents + "dev.mosaic.app.pro.sfl4")
         try fixture.file("Library/Application Support/io.branch/dev.mosaic.app/x")
         try fixture.file("Library/Application Support/io.branch/dev.someone.else/x")
+        try fixture.file("Library/Application Support/SomeBackup/dev.mosaic.app/settings-copy")
         try fixture.file("Library/Application Support/CrashReporter/Mosaic_1A2B.plist")
         try fixture.file("Library/Logs/DiagnosticReports/Mosaic-2026-11-01-101010.ips")
         try fixture.file("Library/Logs/DiagnosticReports/Mosaic Helper (Renderer)-2026-11-01-101010.ips")
@@ -160,6 +161,8 @@ struct UninstallTests {
         #expect(match(plan, "Library/Caches/com.apple.nsurlsessiond/Downloads/dev.mosaic.app", in: fixture) == "exact")
         #expect(match(plan, recents + "dev.mosaic.app.startuphelper.sfl4", in: fixture) == "exact")
         #expect(match(plan, "Library/Application Support/io.branch/dev.mosaic.app", in: fixture) == "likely")
+        // Inside a folder that is not a known SDK's: a person's copy, perhaps. Review.
+        #expect(match(plan, "Library/Application Support/SomeBackup/dev.mosaic.app", in: fixture) == "review")
         #expect(match(plan, "Library/Application Support/CrashReporter/Mosaic_1A2B.plist", in: fixture) == "likely")
         #expect(match(plan, "Library/Logs/DiagnosticReports/Mosaic-2026-11-01-101010.ips", in: fixture) == "likely")
         #expect(match(plan, "Library/Logs/DiagnosticReports/Mosaic Helper (Renderer)-2026-11-01-101010.ips", in: fixture) == "likely")

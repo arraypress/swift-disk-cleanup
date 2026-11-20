@@ -52,8 +52,13 @@ enum Detectors {
         var places = (rule.paths + rule.globs).map { $0.hasPrefix("/") ? root + $0 : PathText.expand($0, home: context.home.path) }
         if !context.isFixture {
             let overrides: [String: String] = ["uv-cache": "UV_CACHE_DIR", "hf-hub": "HF_HUB_CACHE"]
+            // Folders of versions: the override is the folder, the glob goes under it.
+            let folderOverrides: [String: (String, String)] = ["playwright-browsers": ("PLAYWRIGHT_BROWSERS_PATH", "/*"),
+                                                               "puppeteer-browsers": ("PUPPETEER_CACHE_DIR", "/*/*")]
             if let key = overrides[rule.id], let value = context.environment[key], value.hasPrefix("/") {
                 places = [value]
+            } else if let (key, glob) = folderOverrides[rule.id], let value = context.environment[key], value.hasPrefix("/") {
+                places = [value + glob]   // PLAYWRIGHT_BROWSERS_PATH=0 puts them in node_modules: not absolute, default kept
             } else if rule.id == "hf-hub", let value = context.environment["HF_HOME"], value.hasPrefix("/") {
                 places = [value + "/hub"]
             }
@@ -79,6 +84,62 @@ enum Detectors {
                 if kept.contains(name) {
                     result.candidates[index].protected = "the newest build for this device model, kept"
                 }
+            }
+        }
+        return result
+    }
+
+    // MARK: Superseded versions
+
+    /// One candidate per versioned folder; the newest per product, and any
+    /// folder whose name is not a product and a version, are protected.
+    static func superseded(_ rule: Rule, context: CleanupContext) -> DetectorResult {
+        var result = paths(rule, context: context)
+        let byParent = Dictionary(grouping: result.candidates.indices) { PathText.parent(result.candidates[$0].path) }
+        for (_, indices) in byParent {
+            let names = indices.map { PathText.lastComponent(result.candidates[$0].path) }
+            let old = VersionedNames.superseded(names, keep: rule.keepNewest ?? 1)
+            for index in indices {
+                let name = PathText.lastComponent(result.candidates[index].path)
+                guard let split = VersionedNames.split(name) else {
+                    result.candidates[index].protected = "not a versioned folder"
+                    continue
+                }
+                result.candidates[index].evidence["product"] = split.product
+                result.candidates[index].evidence["version"] = split.version
+                if !old.contains(name) { result.candidates[index].protected = "the newest \(split.product), kept" }
+            }
+        }
+        return result
+    }
+
+    /// Superseded Playwright builds, judged against the installs that use
+    /// the folder: one some install still needs is review, saying which; one
+    /// none needs is safe. A register that is missing or unreadable makes
+    /// every older build review — not knowing is never "unused".
+    static func playwrightBrowsers(_ rule: Rule, context: CleanupContext) -> DetectorResult {
+        var result = superseded(rule, context: context)
+        let parents = Set(result.candidates.map { PathText.parent($0.path) })
+        var needed: [String: [String: [String]]] = [:]   // folder → browser folder name → installs
+        var unknown: Set<String> = []
+        for parent in parents {
+            let links = PathProbe.list(parent + "/.links")
+            guard links.visibility == .visible else { unknown.insert(parent); continue }
+            for link in links.names {
+                guard let data = PathProbe.read(parent + "/.links/" + link, limit: 4096), let install = PlaywrightLinks.install(data),
+                      let browsers = PathProbe.read(install + "/browsers.json", limit: 1 << 20) else { continue }
+                for name in PlaywrightLinks.folders(browsers) { needed[parent, default: [:]][name, default: []].append(install) }
+            }
+        }
+        for index in result.candidates.indices where result.candidates[index].protected == nil {
+            let path = result.candidates[index].path
+            let parent = PathText.parent(path), name = PathText.lastComponent(path)
+            if unknown.contains(parent) {
+                result.candidates[index].tier = .review
+                result.candidates[index].evidence["usedBy"] = "unknown: no .links register to read"
+            } else if let installs = needed[parent]?[name] {
+                result.candidates[index].tier = .review
+                result.candidates[index].evidence["usedBy"] = installs.map { PathText.parent($0) }.sorted().joined(separator: "\n")
             }
         }
         return result

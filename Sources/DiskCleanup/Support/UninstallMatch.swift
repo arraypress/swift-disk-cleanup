@@ -113,6 +113,11 @@ enum UninstallMatch {
         return theirs.isEmpty ? ours : nil
     }
 
+    /// Folders in Application Support or Caches that SDKs bundled into many
+    /// apps keep one subfolder per app in, named by its bundle id: only these
+    /// make such a subfolder likely rather than review.
+    static let sdkHolders: Set<String> = ["io.branch"]
+
     /// The crash report kinds macOS writes per process.
     static let crashExtensions: Set<String> = ["ips", "crash", "diag", "spin", "hang"]
 
