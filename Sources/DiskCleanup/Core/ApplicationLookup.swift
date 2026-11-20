@@ -19,6 +19,30 @@ public protocol ApplicationLookup: Sendable {
     func runningBundleIDs() -> Set<String>
 }
 
+/// A stand-in home's answers: an app is installed only when it is in the
+/// stand-in's own app folders, and nothing is running. The real Mac's
+/// LaunchServices, Spotlight and running apps are out of reach, as every
+/// other source is for a stand-in home — otherwise a fixture run said
+/// "installed" for whatever this Mac happens to have (Logic Pro kept the
+/// sound-library tests from passing on any Mac that has it).
+public struct FolderApplicationLookup: ApplicationLookup {
+
+    public let folders: [URL]
+
+    public init(folders: [URL]) {
+        self.folders = folders
+    }
+
+    public func launchServices(_ bundleID: String) -> AppAnswer {
+        let apps = AppIndex.build(folders: folders).apps[bundleID.lowercased()] ?? []
+        return apps.isEmpty ? .notInstalled : .installed(apps)
+    }
+
+    public func spotlight(_ bundleID: String) -> AppAnswer { launchServices(bundleID) }
+
+    public func runningBundleIDs() -> Set<String> { [] }
+}
+
 /// LaunchServices, Spotlight and NSWorkspace, for real.
 public struct SystemApplicationLookup: ApplicationLookup {
 

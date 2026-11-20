@@ -181,6 +181,22 @@ struct UninstallTests {
         #expect(!taking.contains { $0.path.contains("dev.mosaic.app.pro") || $0.path.contains("Mosaic Pro") })
     }
 
+    /// A stand-in home never asks this Mac: Safari is on every Mac, yet not in the fixture.
+    @Test func aStandInHomeKnowsOnlyItsOwnApps() throws {
+        let fixture = try Fixture.make()
+        defer { fixture.remove() }
+        try app("Mosaic", id: "dev.mosaic.app", in: fixture)
+        let lookup = CleanupContext.live(home: fixture.home).lookup
+        if case .notInstalled = lookup.launchServices("com.apple.Safari") {} else { Issue.record("Safari leaked in from this Mac") }
+        if case .notInstalled = lookup.spotlight("com.apple.Safari") {} else { Issue.record("Spotlight leaked in from this Mac") }
+        if case .installed(let apps) = lookup.launchServices("dev.mosaic.app") {
+            #expect(apps.first?.path.hasSuffix("/Applications/Mosaic.app") == true)
+        } else {
+            Issue.record("the fixture's own app was not found")
+        }
+        #expect(lookup.runningBundleIDs().isEmpty)
+    }
+
     @Test func recentDocumentsAreNotMistakenForSSH() throws {
         let catalogue = try Catalogue.builtIn()
         let home = "/Users/someone"
